@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,21 @@
  */
 package org.thingsboard.server.dao.sql.tenant;
 
-import com.datastax.driver.core.utils.UUIDs;
+import com.datastax.oss.driver.api.core.uuid.Uuids;
 import com.github.springtestdbunit.annotation.DatabaseSetup;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.thingsboard.server.common.data.Tenant;
 import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.common.data.page.TextPageLink;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.dao.AbstractJpaDaoTest;
+import org.thingsboard.server.dao.service.AbstractServiceTest;
 import org.thingsboard.server.dao.tenant.TenantDao;
 
 import java.util.List;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 /**
  * Created by Valerii Sosliuk on 4/30/2017.
@@ -41,15 +43,21 @@ public class JpaTenantDaoTest extends AbstractJpaDaoTest {
     @DatabaseSetup("classpath:dbunit/empty_dataset.xml")
     public void testFindTenantsByRegion() {
         createTenants();
-        assertEquals(60, tenantDao.find().size());
-        List<Tenant> tenants1 = tenantDao.findTenantsByRegion("REGION_1", new TextPageLink(20,"title"));
-        assertEquals(20, tenants1.size());
-        List<Tenant> tenants2 = tenantDao.findTenantsByRegion("REGION_1",
-                new TextPageLink(20,"title", tenants1.get(19).getId().getId(), null));
-        assertEquals(10, tenants2.size());
-        List<Tenant> tenants3 = tenantDao.findTenantsByRegion("REGION_1",
-                new TextPageLink(20,"title", tenants2.get(9).getId().getId(), null));
-        assertEquals(0, tenants3.size());
+        assertEquals(60, tenantDao.find(AbstractServiceTest.SYSTEM_TENANT_ID).size());
+
+        PageLink pageLink = new PageLink(20, 0, "title");
+        PageData<Tenant> tenants1 = tenantDao.findTenantsByRegion(AbstractServiceTest.SYSTEM_TENANT_ID, "REGION_1", pageLink);
+        assertEquals(20, tenants1.getData().size());
+
+        pageLink = pageLink.nextPageLink();
+        PageData<Tenant> tenants2 = tenantDao.findTenantsByRegion(AbstractServiceTest.SYSTEM_TENANT_ID,"REGION_1",
+                pageLink);
+        assertEquals(10, tenants2.getData().size());
+
+        pageLink = pageLink.nextPageLink();
+        PageData<Tenant> tenants3 = tenantDao.findTenantsByRegion(AbstractServiceTest.SYSTEM_TENANT_ID,"REGION_1",
+                pageLink);
+        assertEquals(0, tenants3.getData().size());
     }
 
     private void createTenants() {
@@ -61,10 +69,10 @@ public class JpaTenantDaoTest extends AbstractJpaDaoTest {
 
     private void createTenant(String region, String title, int index) {
         Tenant tenant = new Tenant();
-        tenant.setId(new TenantId(UUIDs.timeBased()));
+        tenant.setId(new TenantId(Uuids.timeBased()));
         tenant.setRegion(region);
         tenant.setTitle(title + "_" + index);
-        tenantDao.save(tenant);
+        tenantDao.save(AbstractServiceTest.SYSTEM_TENANT_ID, tenant);
     }
 
 }

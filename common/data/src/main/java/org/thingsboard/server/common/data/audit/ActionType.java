@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ public enum ActionType {
     UPDATED(false), // log entity
     ATTRIBUTES_UPDATED(false), // log attributes/values
     ATTRIBUTES_DELETED(false), // log attributes
+    TIMESERIES_DELETED(false), // log timeseries
     RPC_CALL(false), // log method and params
     CREDENTIALS_UPDATED(false), // log new credentials
     ASSIGNED_TO_CUSTOMER(false), // log customer name
@@ -31,7 +32,17 @@ public enum ActionType {
     ACTIVATED(false), // log string id
     SUSPENDED(false), // log string id
     CREDENTIALS_READ(true), // log device id
-    ATTRIBUTES_READ(true); // log attributes
+    ATTRIBUTES_READ(true), // log attributes
+    RELATION_ADD_OR_UPDATE(false),
+    RELATION_DELETED(false),
+    RELATIONS_DELETED(false),
+    ALARM_ACK(false),
+    ALARM_CLEAR(false),
+    LOGIN(false),
+    LOGOUT(false),
+    LOCKOUT(false),
+    ASSIGNED_FROM_TENANT(false),
+    ASSIGNED_TO_TENANT(false);
 
     private final boolean isRead;
 

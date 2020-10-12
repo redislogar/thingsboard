@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package org.thingsboard.server.dao.service;
 
-import com.datastax.driver.core.utils.UUIDs;
+import com.datastax.oss.driver.api.core.uuid.Uuids;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.After;
 import org.junit.Assert;
@@ -24,8 +24,8 @@ import org.junit.Test;
 import org.thingsboard.server.common.data.Customer;
 import org.thingsboard.server.common.data.Tenant;
 import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.common.data.page.TextPageData;
-import org.thingsboard.server.common.data.page.TextPageLink;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.dao.exception.DataValidationException;
 
 import java.util.ArrayList;
@@ -69,10 +69,10 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
         savedCustomer.setTitle("My new customer");
 
         customerService.saveCustomer(savedCustomer);
-        Customer foundCustomer = customerService.findCustomerById(savedCustomer.getId());
+        Customer foundCustomer = customerService.findCustomerById(tenantId, savedCustomer.getId());
         Assert.assertEquals(foundCustomer.getTitle(), savedCustomer.getTitle());
 
-        customerService.deleteCustomer(savedCustomer.getId());
+        customerService.deleteCustomer(tenantId, savedCustomer.getId());
     }
 
     @Test
@@ -81,10 +81,10 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
         customer.setTenantId(tenantId);
         customer.setTitle("My customer");
         Customer savedCustomer = customerService.saveCustomer(customer);
-        Customer foundCustomer = customerService.findCustomerById(savedCustomer.getId());
+        Customer foundCustomer = customerService.findCustomerById(tenantId, savedCustomer.getId());
         Assert.assertNotNull(foundCustomer);
         Assert.assertEquals(savedCustomer, foundCustomer);
-        customerService.deleteCustomer(savedCustomer.getId());
+        customerService.deleteCustomer(tenantId, savedCustomer.getId());
     }
 
     @Test(expected = DataValidationException.class)
@@ -105,7 +105,7 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
     public void testSaveCustomerWithInvalidTenant() {
         Customer customer = new Customer();
         customer.setTitle("My customer");
-        customer.setTenantId(new TenantId(UUIDs.timeBased()));
+        customer.setTenantId(new TenantId(Uuids.timeBased()));
         customerService.saveCustomer(customer);
     }
 
@@ -124,8 +124,8 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
         customer.setTitle("My customer");
         customer.setTenantId(tenantId);
         Customer savedCustomer = customerService.saveCustomer(customer);
-        customerService.deleteCustomer(savedCustomer.getId());
-        Customer foundCustomer = customerService.findCustomerById(savedCustomer.getId());
+        customerService.deleteCustomer(tenantId, savedCustomer.getId());
+        Customer foundCustomer = customerService.findCustomerById(tenantId, savedCustomer.getId());
         Assert.assertNull(foundCustomer);
     }
 
@@ -146,13 +146,13 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
         }
 
         List<Customer> loadedCustomers = new ArrayList<>();
-        TextPageLink pageLink = new TextPageLink(23);
-        TextPageData<Customer> pageData = null;
+        PageLink pageLink = new PageLink(23);
+        PageData<Customer> pageData = null;
         do {
             pageData = customerService.findCustomersByTenantId(tenantId, pageLink);
             loadedCustomers.addAll(pageData.getData());
             if (pageData.hasNext()) {
-                pageLink = pageData.getNextPageLink();
+                pageLink = pageLink.nextPageLink();
             }
         } while (pageData.hasNext());
 
@@ -163,7 +163,7 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
 
         customerService.deleteCustomersByTenantId(tenantId);
 
-        pageLink = new TextPageLink(33);
+        pageLink = new PageLink(33);
         pageData = customerService.findCustomersByTenantId(tenantId, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertTrue(pageData.getData().isEmpty());
@@ -197,13 +197,13 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
         }
 
         List<Customer> loadedCustomersTitle1 = new ArrayList<>();
-        TextPageLink pageLink = new TextPageLink(15, title1);
-        TextPageData<Customer> pageData = null;
+        PageLink pageLink = new PageLink(15, 0, title1);
+        PageData<Customer> pageData = null;
         do {
             pageData = customerService.findCustomersByTenantId(tenantId, pageLink);
             loadedCustomersTitle1.addAll(pageData.getData());
             if (pageData.hasNext()) {
-                pageLink = pageData.getNextPageLink();
+                pageLink = pageLink.nextPageLink();
             }
         } while (pageData.hasNext());
 
@@ -213,12 +213,12 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
         Assert.assertEquals(customersTitle1, loadedCustomersTitle1);
 
         List<Customer> loadedCustomersTitle2 = new ArrayList<>();
-        pageLink = new TextPageLink(4, title2);
+        pageLink = new PageLink(4, 0, title2);
         do {
             pageData = customerService.findCustomersByTenantId(tenantId, pageLink);
             loadedCustomersTitle2.addAll(pageData.getData());
             if (pageData.hasNext()) {
-                pageLink = pageData.getNextPageLink();
+                pageLink = pageLink.nextPageLink();
             }
         } while (pageData.hasNext());
 
@@ -228,19 +228,19 @@ public abstract class BaseCustomerServiceTest extends AbstractServiceTest {
         Assert.assertEquals(customersTitle2, loadedCustomersTitle2);
 
         for (Customer customer : loadedCustomersTitle1) {
-            customerService.deleteCustomer(customer.getId());
+            customerService.deleteCustomer(tenantId, customer.getId());
         }
 
-        pageLink = new TextPageLink(4, title1);
+        pageLink = new PageLink(4, 0, title1);
         pageData = customerService.findCustomersByTenantId(tenantId, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertEquals(0, pageData.getData().size());
 
         for (Customer customer : loadedCustomersTitle2) {
-            customerService.deleteCustomer(customer.getId());
+            customerService.deleteCustomer(tenantId, customer.getId());
         }
 
-        pageLink = new TextPageLink(4, title2);
+        pageLink = new PageLink(4, 0, title2);
         pageData = customerService.findCustomersByTenantId(tenantId, pageLink);
         Assert.assertFalse(pageData.hasNext());
         Assert.assertEquals(0, pageData.getData().size());

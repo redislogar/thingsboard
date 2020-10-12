@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,245 +15,122 @@
  */
 package org.thingsboard.server.actors.service;
 
-import akka.actor.ActorRef;
-import akka.actor.ActorSystem;
-import akka.actor.Props;
-import akka.actor.Terminated;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
+import org.thingsboard.common.util.ThingsBoardThreadFactory;
 import org.thingsboard.server.actors.ActorSystemContext;
+import org.thingsboard.server.actors.DefaultTbActorSystem;
+import org.thingsboard.server.actors.TbActorId;
+import org.thingsboard.server.actors.TbActorRef;
+import org.thingsboard.server.actors.TbActorSystem;
+import org.thingsboard.server.actors.TbActorSystemSettings;
 import org.thingsboard.server.actors.app.AppActor;
-import org.thingsboard.server.actors.rpc.RpcBroadcastMsg;
-import org.thingsboard.server.actors.rpc.RpcManagerActor;
-import org.thingsboard.server.actors.rpc.RpcSessionCreateRequestMsg;
-import org.thingsboard.server.actors.rpc.RpcSessionTellMsg;
-import org.thingsboard.server.actors.session.SessionManagerActor;
+import org.thingsboard.server.actors.app.AppInitMsg;
 import org.thingsboard.server.actors.stats.StatsActor;
-import org.thingsboard.server.common.data.id.DeviceId;
-import org.thingsboard.server.common.data.id.PluginId;
-import org.thingsboard.server.common.data.id.RuleId;
-import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.common.data.plugin.ComponentLifecycleEvent;
-import org.thingsboard.server.common.msg.aware.SessionAwareMsg;
-import org.thingsboard.server.common.msg.cluster.ClusterEventMsg;
-import org.thingsboard.server.common.msg.cluster.ServerAddress;
-import org.thingsboard.server.common.msg.cluster.ToAllNodesMsg;
-import org.thingsboard.server.common.msg.core.ToDeviceSessionActorMsg;
-import org.thingsboard.server.extensions.api.device.DeviceNameOrTypeUpdateMsg;
-import org.thingsboard.server.common.msg.device.ToDeviceActorMsg;
-import org.thingsboard.server.common.msg.plugin.ComponentLifecycleMsg;
-import org.thingsboard.server.extensions.api.device.DeviceCredentialsUpdateNotificationMsg;
-import org.thingsboard.server.extensions.api.device.ToDeviceActorNotificationMsg;
-import org.thingsboard.server.extensions.api.plugins.msg.ToPluginActorMsg;
-import org.thingsboard.server.extensions.api.plugins.rest.PluginRestMsg;
-import org.thingsboard.server.extensions.api.plugins.ws.msg.PluginWebsocketMsg;
-import org.thingsboard.server.service.cluster.discovery.DiscoveryService;
-import org.thingsboard.server.service.cluster.discovery.ServerInstance;
-import org.thingsboard.server.service.cluster.rpc.ClusterRpcService;
-import scala.concurrent.Await;
-import scala.concurrent.Future;
-import scala.concurrent.duration.Duration;
+import org.thingsboard.server.common.msg.queue.PartitionChangeMsg;
+import org.thingsboard.server.queue.discovery.PartitionChangeEvent;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
-import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 @Service
 @Slf4j
 public class DefaultActorService implements ActorService {
 
-    private static final String ACTOR_SYSTEM_NAME = "Akka";
-
     public static final String APP_DISPATCHER_NAME = "app-dispatcher";
-    public static final String CORE_DISPATCHER_NAME = "core-dispatcher";
-    public static final String SYSTEM_RULE_DISPATCHER_NAME = "system-rule-dispatcher";
-    public static final String SYSTEM_PLUGIN_DISPATCHER_NAME = "system-plugin-dispatcher";
-    public static final String TENANT_RULE_DISPATCHER_NAME = "rule-dispatcher";
-    public static final String TENANT_PLUGIN_DISPATCHER_NAME = "plugin-dispatcher";
-    public static final String SESSION_DISPATCHER_NAME = "session-dispatcher";
-    public static final String RPC_DISPATCHER_NAME = "rpc-dispatcher";
+    public static final String TENANT_DISPATCHER_NAME = "tenant-dispatcher";
+    public static final String DEVICE_DISPATCHER_NAME = "device-dispatcher";
+    public static final String RULE_DISPATCHER_NAME = "rule-dispatcher";
 
     @Autowired
     private ActorSystemContext actorContext;
 
-    @Autowired
-    private ClusterRpcService rpcService;
+    private TbActorSystem system;
 
-    @Autowired
-    private DiscoveryService discoveryService;
+    private TbActorRef appActor;
 
-    private ActorSystem system;
+    @Value("${actors.system.throughput:5}")
+    private int actorThroughput;
 
-    private ActorRef appActor;
+    @Value("${actors.system.max_actor_init_attempts:10}")
+    private int maxActorInitAttempts;
 
-    private ActorRef sessionManagerActor;
+    @Value("${actors.system.scheduler_pool_size:1}")
+    private int schedulerPoolSize;
 
-    private ActorRef rpcManagerActor;
+    @Value("${actors.system.app_dispatcher_pool_size:1}")
+    private int appDispatcherSize;
+
+    @Value("${actors.system.tenant_dispatcher_pool_size:2}")
+    private int tenantDispatcherSize;
+
+    @Value("${actors.system.device_dispatcher_pool_size:4}")
+    private int deviceDispatcherSize;
+
+    @Value("${actors.system.rule_dispatcher_pool_size:4}")
+    private int ruleDispatcherSize;
 
     @PostConstruct
     public void initActorSystem() {
-        log.info("Initializing Actor system. {}", actorContext.getRuleService());
+        log.info("Initializing actor system.");
         actorContext.setActorService(this);
-        system = ActorSystem.create(ACTOR_SYSTEM_NAME, actorContext.getConfig());
+        TbActorSystemSettings settings = new TbActorSystemSettings(actorThroughput, schedulerPoolSize, maxActorInitAttempts);
+        system = new DefaultTbActorSystem(settings);
+
+        system.createDispatcher(APP_DISPATCHER_NAME, initDispatcherExecutor(APP_DISPATCHER_NAME, appDispatcherSize));
+        system.createDispatcher(TENANT_DISPATCHER_NAME, initDispatcherExecutor(TENANT_DISPATCHER_NAME, tenantDispatcherSize));
+        system.createDispatcher(DEVICE_DISPATCHER_NAME, initDispatcherExecutor(DEVICE_DISPATCHER_NAME, deviceDispatcherSize));
+        system.createDispatcher(RULE_DISPATCHER_NAME, initDispatcherExecutor(RULE_DISPATCHER_NAME, ruleDispatcherSize));
+
         actorContext.setActorSystem(system);
 
-        appActor = system.actorOf(Props.create(new AppActor.ActorCreator(actorContext)).withDispatcher(APP_DISPATCHER_NAME), "appActor");
+        appActor = system.createRootActor(APP_DISPATCHER_NAME, new AppActor.ActorCreator(actorContext));
         actorContext.setAppActor(appActor);
 
-        sessionManagerActor = system.actorOf(Props.create(new SessionManagerActor.ActorCreator(actorContext)).withDispatcher(CORE_DISPATCHER_NAME),
-                "sessionManagerActor");
-        actorContext.setSessionManagerActor(sessionManagerActor);
-
-        rpcManagerActor = system.actorOf(Props.create(new RpcManagerActor.ActorCreator(actorContext)).withDispatcher(CORE_DISPATCHER_NAME),
-                "rpcManagerActor");
-
-        ActorRef statsActor = system.actorOf(Props.create(new StatsActor.ActorCreator(actorContext)).withDispatcher(CORE_DISPATCHER_NAME), "statsActor");
+        TbActorRef statsActor = system.createRootActor(TENANT_DISPATCHER_NAME, new StatsActor.ActorCreator(actorContext, "StatsActor"));
         actorContext.setStatsActor(statsActor);
 
-        rpcService.init(this);
-
-        discoveryService.addListener(this);
         log.info("Actor system initialized.");
+    }
+
+    private ExecutorService initDispatcherExecutor(String dispatcherName, int poolSize) {
+        if (poolSize == 0) {
+            int cores = Runtime.getRuntime().availableProcessors();
+            poolSize = Math.max(1, cores / 2);
+        }
+        if (poolSize == 1) {
+            return Executors.newSingleThreadExecutor(ThingsBoardThreadFactory.forName(dispatcherName));
+        } else {
+            return Executors.newWorkStealingPool(poolSize);
+        }
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void onApplicationEvent(ApplicationReadyEvent applicationReadyEvent) {
+        log.info("Received application ready event. Sending application init message to actor system");
+        appActor.tellWithHighPriority(new AppInitMsg());
+    }
+
+    @EventListener(PartitionChangeEvent.class)
+    public void onApplicationEvent(PartitionChangeEvent partitionChangeEvent) {
+        log.info("Received partition change event.");
+        this.appActor.tellWithHighPriority(new PartitionChangeMsg(partitionChangeEvent.getServiceQueueKey(), partitionChangeEvent.getPartitions()));
     }
 
     @PreDestroy
     public void stopActorSystem() {
-        Future<Terminated> status = system.terminate();
-        try {
-            Terminated terminated = Await.result(status, Duration.Inf());
-            log.info("Actor system terminated: {}", terminated);
-        } catch (Exception e) {
-            log.error("Failed to terminate actor system.", e);
+        if (system != null) {
+            log.info("Stopping actor system.");
+            system.stop();
+            log.info("Actor system stopped.");
         }
     }
 
-    @Override
-    public void process(SessionAwareMsg msg) {
-        log.debug("Processing session aware msg: {}", msg);
-        sessionManagerActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void process(PluginWebsocketMsg<?> msg) {
-        log.debug("Processing websocket msg: {}", msg);
-        appActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void process(PluginRestMsg msg) {
-        log.debug("Processing rest msg: {}", msg);
-        appActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(ToPluginActorMsg msg) {
-        log.trace("Processing plugin rpc msg: {}", msg);
-        appActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(ToDeviceActorMsg msg) {
-        log.trace("Processing device rpc msg: {}", msg);
-        appActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(ToDeviceActorNotificationMsg msg) {
-        log.trace("Processing notification rpc msg: {}", msg);
-        appActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(ToDeviceSessionActorMsg msg) {
-        log.trace("Processing session rpc msg: {}", msg);
-        sessionManagerActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(ToAllNodesMsg msg) {
-        log.trace("Processing broadcast rpc msg: {}", msg);
-        appActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(RpcSessionCreateRequestMsg msg) {
-        log.trace("Processing session create msg: {}", msg);
-        rpcManagerActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(RpcSessionTellMsg msg) {
-        log.trace("Processing session rpc msg: {}", msg);
-        rpcManagerActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onMsg(RpcBroadcastMsg msg) {
-        log.trace("Processing broadcast rpc msg: {}", msg);
-        rpcManagerActor.tell(msg, ActorRef.noSender());
-    }
-
-    @Override
-    public void onServerAdded(ServerInstance server) {
-        log.trace("Processing onServerAdded msg: {}", server);
-        broadcast(new ClusterEventMsg(server.getServerAddress(), true));
-    }
-
-    @Override
-    public void onServerUpdated(ServerInstance server) {
-        //Do nothing
-    }
-
-    @Override
-    public void onServerRemoved(ServerInstance server) {
-        log.trace("Processing onServerRemoved msg: {}", server);
-        broadcast(new ClusterEventMsg(server.getServerAddress(), false));
-    }
-
-    @Override
-    public void onPluginStateChange(TenantId tenantId, PluginId pluginId, ComponentLifecycleEvent state) {
-        log.trace("[{}] Processing onPluginStateChange event: {}", pluginId, state);
-        broadcast(ComponentLifecycleMsg.forPlugin(tenantId, pluginId, state));
-    }
-
-    @Override
-    public void onRuleStateChange(TenantId tenantId, RuleId ruleId, ComponentLifecycleEvent state) {
-        log.trace("[{}] Processing onRuleStateChange event: {}", ruleId, state);
-        broadcast(ComponentLifecycleMsg.forRule(tenantId, ruleId, state));
-    }
-
-    @Override
-    public void onCredentialsUpdate(TenantId tenantId, DeviceId deviceId) {
-        DeviceCredentialsUpdateNotificationMsg msg = new DeviceCredentialsUpdateNotificationMsg(tenantId, deviceId);
-        Optional<ServerAddress> address = actorContext.getRoutingService().resolveById(deviceId);
-        if (address.isPresent()) {
-            rpcService.tell(address.get(), msg);
-        } else {
-            onMsg(msg);
-        }
-    }
-
-    @Override
-    public void onDeviceNameOrTypeUpdate(TenantId tenantId, DeviceId deviceId, String deviceName, String deviceType) {
-        log.trace("[{}] Processing onDeviceNameOrTypeUpdate event, deviceName: {}, deviceType: {}", deviceId, deviceName, deviceType);
-        DeviceNameOrTypeUpdateMsg msg = new DeviceNameOrTypeUpdateMsg(tenantId, deviceId, deviceName, deviceType);
-        Optional<ServerAddress> address = actorContext.getRoutingService().resolveById(deviceId);
-        if (address.isPresent()) {
-            rpcService.tell(address.get(), msg);
-        } else {
-            onMsg(msg);
-        }
-    }
-
-    public void broadcast(ToAllNodesMsg msg) {
-        rpcService.broadcast(msg);
-        appActor.tell(msg, ActorRef.noSender());
-    }
-
-    private void broadcast(ClusterEventMsg msg) {
-        this.appActor.tell(msg, ActorRef.noSender());
-        this.sessionManagerActor.tell(msg, ActorRef.noSender());
-        this.rpcManagerActor.tell(msg, ActorRef.noSender());
-    }
 }

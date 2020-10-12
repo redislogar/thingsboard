@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,7 @@
  */
 package org.thingsboard.server.dao.service;
 
-import com.datastax.driver.core.utils.UUIDs;
-import org.apache.commons.lang3.RandomStringUtils;
+import com.datastax.oss.driver.api.core.uuid.Uuids;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -51,7 +50,7 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
     @Test(expected = DataValidationException.class)
     public void testCreateDeviceCredentials() {
         DeviceCredentials deviceCredentials = new DeviceCredentials();
-        deviceCredentialsService.updateDeviceCredentials(deviceCredentials);
+        deviceCredentialsService.updateDeviceCredentials(tenantId, deviceCredentials);
     }
 
     @Test(expected = DataValidationException.class)
@@ -61,12 +60,12 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setType("default");
         device.setTenantId(tenantId);
         device = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(device.getId());
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, device.getId());
         deviceCredentials.setDeviceId(null);
         try {
-            deviceCredentialsService.updateDeviceCredentials(deviceCredentials);
+            deviceCredentialsService.updateDeviceCredentials(tenantId, deviceCredentials);
         } finally {
-            deviceService.deleteDevice(device.getId());
+            deviceService.deleteDevice(tenantId, device.getId());
         }
     }
 
@@ -77,12 +76,12 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setType("default");
         device.setTenantId(tenantId);
         device = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(device.getId());
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, device.getId());
         deviceCredentials.setCredentialsType(null);
         try {
-            deviceCredentialsService.updateDeviceCredentials(deviceCredentials);
+            deviceCredentialsService.updateDeviceCredentials(tenantId, deviceCredentials);
         } finally {
-            deviceService.deleteDevice(device.getId());
+            deviceService.deleteDevice(tenantId, device.getId());
         }
     }
 
@@ -93,12 +92,12 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setType("default");
         device.setTenantId(tenantId);
         device = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(device.getId());
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, device.getId());
         deviceCredentials.setCredentialsId(null);
         try {
-            deviceCredentialsService.updateDeviceCredentials(deviceCredentials);
+            deviceCredentialsService.updateDeviceCredentials(tenantId, deviceCredentials);
         } finally {
-            deviceService.deleteDevice(device.getId());
+            deviceService.deleteDevice(tenantId, device.getId());
         }
     }
 
@@ -109,16 +108,16 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setType("default");
         device.setTenantId(tenantId);
         device = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(device.getId());
-        DeviceCredentials newDeviceCredentials = new DeviceCredentials(new DeviceCredentialsId(UUIDs.timeBased()));
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, device.getId());
+        DeviceCredentials newDeviceCredentials = new DeviceCredentials(new DeviceCredentialsId(Uuids.timeBased()));
         newDeviceCredentials.setCreatedTime(deviceCredentials.getCreatedTime());
         newDeviceCredentials.setDeviceId(deviceCredentials.getDeviceId());
         newDeviceCredentials.setCredentialsType(deviceCredentials.getCredentialsType());
         newDeviceCredentials.setCredentialsId(deviceCredentials.getCredentialsId());
         try {
-            deviceCredentialsService.updateDeviceCredentials(newDeviceCredentials);
+            deviceCredentialsService.updateDeviceCredentials(tenantId, newDeviceCredentials);
         } finally {
-            deviceService.deleteDevice(device.getId());
+            deviceService.deleteDevice(tenantId, device.getId());
         }
     }
 
@@ -129,12 +128,12 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setType("default");
         device.setTenantId(tenantId);
         device = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(device.getId());
-        deviceCredentials.setDeviceId(new DeviceId(UUIDs.timeBased()));
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, device.getId());
+        deviceCredentials.setDeviceId(new DeviceId(Uuids.timeBased()));
         try {
-            deviceCredentialsService.updateDeviceCredentials(deviceCredentials);
+            deviceCredentialsService.updateDeviceCredentials(tenantId, deviceCredentials);
         } finally {
-            deviceService.deleteDevice(device.getId());
+            deviceService.deleteDevice(tenantId, device.getId());
         }
     }
 
@@ -145,10 +144,10 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setName("My device");
         device.setType("default");
         Device savedDevice = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(savedDevice.getId());
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, savedDevice.getId());
         Assert.assertEquals(savedDevice.getId(), deviceCredentials.getDeviceId());
-        deviceService.deleteDevice(savedDevice.getId());
-        deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(savedDevice.getId());
+        deviceService.deleteDevice(tenantId, savedDevice.getId());
+        deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, savedDevice.getId());
         Assert.assertNull(deviceCredentials);
     }
 
@@ -159,11 +158,11 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setName("My device");
         device.setType("default");
         Device savedDevice = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(savedDevice.getId());
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, savedDevice.getId());
         Assert.assertEquals(savedDevice.getId(), deviceCredentials.getDeviceId());
         DeviceCredentials foundDeviceCredentials = deviceCredentialsService.findDeviceCredentialsByCredentialsId(deviceCredentials.getCredentialsId());
         Assert.assertEquals(deviceCredentials, foundDeviceCredentials);
-        deviceService.deleteDevice(savedDevice.getId());
+        deviceService.deleteDevice(tenantId, savedDevice.getId());
         foundDeviceCredentials = deviceCredentialsService.findDeviceCredentialsByCredentialsId(deviceCredentials.getCredentialsId());
         Assert.assertNull(foundDeviceCredentials);
     }
@@ -175,14 +174,14 @@ public abstract class BaseDeviceCredentialsServiceTest extends AbstractServiceTe
         device.setName("My device");
         device.setType("default");
         Device savedDevice = deviceService.saveDevice(device);
-        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(savedDevice.getId());
+        DeviceCredentials deviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, savedDevice.getId());
         Assert.assertEquals(savedDevice.getId(), deviceCredentials.getDeviceId());
         deviceCredentials.setCredentialsType(DeviceCredentialsType.ACCESS_TOKEN);
         deviceCredentials.setCredentialsId("access_token");
-        deviceCredentialsService.updateDeviceCredentials(deviceCredentials);
-        DeviceCredentials foundDeviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(savedDevice.getId());
+        deviceCredentialsService.updateDeviceCredentials(tenantId, deviceCredentials);
+        DeviceCredentials foundDeviceCredentials = deviceCredentialsService.findDeviceCredentialsByDeviceId(tenantId, savedDevice.getId());
         Assert.assertEquals(deviceCredentials, foundDeviceCredentials);
-        deviceService.deleteDevice(savedDevice.getId());
+        deviceService.deleteDevice(tenantId, savedDevice.getId());
     }
 }
 

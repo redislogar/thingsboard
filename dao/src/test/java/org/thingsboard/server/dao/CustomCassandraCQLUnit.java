@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,21 +15,18 @@
  */
 package org.thingsboard.server.dao;
 
+import com.datastax.oss.driver.api.core.CqlSession;
 import org.cassandraunit.BaseCassandraUnit;
 import org.cassandraunit.CQLDataLoader;
 import org.cassandraunit.dataset.CQLDataSet;
 import org.cassandraunit.utils.EmbeddedCassandraServerHelper;
 
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.Session;
-
 import java.util.List;
 
 public class CustomCassandraCQLUnit extends BaseCassandraUnit {
-    private List<CQLDataSet> dataSets;
+    protected List<CQLDataSet> dataSets;
 
-    public Session session;
-    public Cluster cluster;
+    public CqlSession session;
 
     public CustomCassandraCQLUnit(List<CQLDataSet> dataSets) {
         this.dataSets = dataSets;
@@ -66,32 +63,26 @@ public class CustomCassandraCQLUnit extends BaseCassandraUnit {
 
     @Override
     protected void load() {
-        String hostIp = EmbeddedCassandraServerHelper.getHost();
-        int port = EmbeddedCassandraServerHelper.getNativeTransportPort();
-        cluster = new Cluster.Builder().addContactPoints(hostIp).withPort(port).withSocketOptions(getSocketOptions())
-                .build();
-        session = cluster.connect();
+        session = EmbeddedCassandraServerHelper.getSession();
         CQLDataLoader dataLoader = new CQLDataLoader(session);
         dataSets.forEach(dataLoader::load);
         session = dataLoader.getSession();
+        System.setSecurityManager(null);
     }
 
     @Override
     protected void after() {
         super.after();
-        try (Cluster c = cluster; Session s = session) {
+        try (CqlSession s = session) {
             session = null;
-            cluster = null;
         }
+        System.setSecurityManager(null);
     }
 
     // Getters for those who do not like to directly access fields
 
-    public Session getSession() {
+    public CqlSession getSession() {
         return session;
     }
 
-    public Cluster getCluster() {
-        return cluster;
-    }
 }

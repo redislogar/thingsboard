@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,21 +23,11 @@ public class BaseTsKvQuery implements TsKvQuery {
     private final String key;
     private final long startTs;
     private final long endTs;
-    private final long interval;
-    private final int limit;
-    private final Aggregation aggregation;
 
-    public BaseTsKvQuery(String key, long startTs, long endTs, long interval, int limit, Aggregation aggregation) {
+    public BaseTsKvQuery(String key, long startTs, long endTs) {
         this.key = key;
         this.startTs = startTs;
         this.endTs = endTs;
-        this.interval = interval;
-        this.limit = limit;
-        this.aggregation = aggregation;
-    }
-
-    public BaseTsKvQuery(String key, long startTs, long endTs) {
-        this(key, startTs, endTs, endTs-startTs, 1, Aggregation.AVG);
     }
 
 }

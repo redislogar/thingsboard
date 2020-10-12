@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,20 @@
  */
 package org.thingsboard.server.common.data;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.EqualsAndHashCode;
 import org.thingsboard.server.common.data.id.TenantId;
-
-import com.fasterxml.jackson.databind.JsonNode;
+import org.thingsboard.server.common.data.id.TenantProfileId;
 
 @EqualsAndHashCode(callSuper = true)
-public class Tenant extends ContactBased<TenantId> implements HasName {
+public class Tenant extends ContactBased<TenantId> implements HasTenantId {
 
     private static final long serialVersionUID = 8057243243859922101L;
     
     private String title;
     private String region;
+    private TenantProfileId tenantProfileId;
 
     public Tenant() {
         super();
@@ -41,6 +42,7 @@ public class Tenant extends ContactBased<TenantId> implements HasName {
         super(tenant);
         this.title = tenant.getTitle();
         this.region = tenant.getRegion();
+        this.tenantProfileId = tenant.getTenantProfileId();
     }
 
     public String getTitle() {
@@ -49,6 +51,12 @@ public class Tenant extends ContactBased<TenantId> implements HasName {
 
     public void setTitle(String title) {
         this.title = title;
+    }
+
+    @Override
+    @JsonIgnore
+    public TenantId getTenantId() {
+        return getId();
     }
 
     @Override
@@ -65,6 +73,14 @@ public class Tenant extends ContactBased<TenantId> implements HasName {
         this.region = region;
     }
 
+    public TenantProfileId getTenantProfileId() {
+        return tenantProfileId;
+    }
+
+    public void setTenantProfileId(TenantProfileId tenantProfileId) {
+        this.tenantProfileId = tenantProfileId;
+    }
+
     @Override
     public String getSearchText() {
         return getTitle();
@@ -77,6 +93,8 @@ public class Tenant extends ContactBased<TenantId> implements HasName {
         builder.append(title);
         builder.append(", region=");
         builder.append(region);
+        builder.append(", tenantProfileId=");
+        builder.append(tenantProfileId);
         builder.append(", additionalInfo=");
         builder.append(getAdditionalInfo());
         builder.append(", country=");

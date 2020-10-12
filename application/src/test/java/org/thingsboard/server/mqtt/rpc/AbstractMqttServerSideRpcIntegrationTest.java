@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,23 +15,46 @@
  */
 package org.thingsboard.server.mqtt.rpc;
 
-import java.util.Arrays;
-
-import com.datastax.driver.core.utils.UUIDs;
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.datastax.oss.driver.api.core.uuid.Uuids;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.nimbusds.jose.util.StandardCharset;
+import io.netty.handler.codec.mqtt.MqttQoS;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.eclipse.paho.client.mqttv3.*;
-import org.junit.*;
-import org.thingsboard.server.actors.plugin.PluginProcessingContext;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.MqttAsyncClient;
+import org.eclipse.paho.client.mqttv3.MqttCallback;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
 import org.thingsboard.server.common.data.Device;
+import org.thingsboard.server.common.data.DeviceProfile;
+import org.thingsboard.server.common.data.DeviceProfileType;
+import org.thingsboard.server.common.data.DeviceTransportType;
 import org.thingsboard.server.common.data.Tenant;
+import org.thingsboard.server.common.data.TransportPayloadType;
 import org.thingsboard.server.common.data.User;
-import org.thingsboard.server.common.data.page.TextPageData;
-import org.thingsboard.server.common.data.plugin.PluginMetaData;
+import org.thingsboard.server.common.data.device.profile.DefaultDeviceProfileConfiguration;
+import org.thingsboard.server.common.data.device.profile.DeviceProfileData;
+import org.thingsboard.server.common.data.device.profile.MqttDeviceProfileTransportConfiguration;
+import org.thingsboard.server.common.data.device.profile.MqttTopics;
 import org.thingsboard.server.common.data.security.Authority;
 import org.thingsboard.server.common.data.security.DeviceCredentials;
 import org.thingsboard.server.controller.AbstractControllerTest;
+import org.thingsboard.server.dao.util.mapping.JacksonUtil;
+import org.thingsboard.server.mqtt.AbstractMqttIntegrationTest;
+import org.thingsboard.server.service.security.AccessValidator;
+
+import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -41,175 +64,154 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @author Valerii Sosliuk
  */
 @Slf4j
-public abstract class AbstractMqttServerSideRpcIntegrationTest extends AbstractControllerTest {
+public abstract class AbstractMqttServerSideRpcIntegrationTest extends AbstractMqttIntegrationTest {
 
-    private static final String MQTT_URL = "tcp://localhost:1883";
-    private static final Long TIME_TO_HANDLE_REQUEST = 500L;
+    protected static final String DEVICE_RESPONSE = "{\"value1\":\"A\",\"value2\":\"B\"}";
 
-    private Tenant savedTenant;
-    private User tenantAdmin;
-    private Long asyncContextTimeoutToUseRpcPlugin;
+    protected Long asyncContextTimeoutToUseRpcPlugin;
 
-
-    @Before
-    public void beforeTest() throws Exception {
-        loginSysAdmin();
-
-        asyncContextTimeoutToUseRpcPlugin = getAsyncContextTimeoutToUseRpcPlugin();
-
-        Tenant tenant = new Tenant();
-        tenant.setTitle("My tenant");
-        savedTenant = doPost("/api/tenant", tenant, Tenant.class);
-        Assert.assertNotNull(savedTenant);
-
-        tenantAdmin = new User();
-        tenantAdmin.setAuthority(Authority.TENANT_ADMIN);
-        tenantAdmin.setTenantId(savedTenant.getId());
-        tenantAdmin.setEmail("tenant2@thingsboard.org");
-        tenantAdmin.setFirstName("Joe");
-        tenantAdmin.setLastName("Downs");
-
-        createUserAndLogin(tenantAdmin, "testPassword1");
+    protected void processBeforeTest(String deviceName, String gatewayName, TransportPayloadType payloadType, String telemetryTopic, String attributesTopic) throws Exception {
+        super.processBeforeTest(deviceName, gatewayName, payloadType, telemetryTopic, attributesTopic);
+        asyncContextTimeoutToUseRpcPlugin = 10000L;
     }
 
-    @After
-    public void afterTest() throws Exception {
-        loginSysAdmin();
-        if (savedTenant != null) {
-            doDelete("/api/tenant/" + savedTenant.getId().getId().toString()).andExpect(status().isOk());
-        }
-    }
+    protected void processOneWayRpcTest() throws Exception {
+        MqttAsyncClient client = getMqttAsyncClient(accessToken);
 
-    @Test
-    public void testServerMqttOneWayRpc() throws Exception {
-        Device device = new Device();
-        device.setName("Test One-Way Server-Side RPC");
-        device.setType("default");
-        Device savedDevice = getSavedDevice(device);
-        DeviceCredentials deviceCredentials = getDeviceCredentials(savedDevice);
-        assertEquals(savedDevice.getId(), deviceCredentials.getDeviceId());
-        String accessToken = deviceCredentials.getCredentialsId();
-        assertNotNull(accessToken);
+        CountDownLatch latch = new CountDownLatch(1);
+        TestMqttCallback callback = new TestMqttCallback(client, latch);
+        client.setCallback(callback);
 
-        String clientId = MqttAsyncClient.generateClientId();
-        MqttAsyncClient client = new MqttAsyncClient(MQTT_URL, clientId);
+        client.subscribe(MqttTopics.DEVICE_RPC_REQUESTS_SUB_TOPIC, MqttQoS.AT_MOST_ONCE.value());
 
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setUserName(accessToken);
-        client.connect(options).waitForCompletion();
-        client.subscribe("v1/devices/me/rpc/request/+", 1);
-        client.setCallback(new TestMqttCallback(client));
+        Thread.sleep(1000);
 
         String setGpioRequest = "{\"method\":\"setGpio\",\"params\":{\"pin\": \"23\",\"value\": 1}}";
         String deviceId = savedDevice.getId().getId().toString();
         String result = doPostAsync("/api/plugins/rpc/oneway/" + deviceId, setGpioRequest, String.class, status().isOk());
         Assert.assertTrue(StringUtils.isEmpty(result));
+        latch.await(3, TimeUnit.SECONDS);
+        assertEquals(MqttQoS.AT_MOST_ONCE.value(), callback.getQoS());
     }
 
-    @Test
-    public void testServerMqttOneWayRpcDeviceOffline() throws Exception {
-        Device device = new Device();
-        device.setName("Test One-Way Server-Side RPC Device Offline");
-        device.setType("default");
-        Device savedDevice = getSavedDevice(device);
-        DeviceCredentials deviceCredentials = getDeviceCredentials(savedDevice);
-        assertEquals(savedDevice.getId(), deviceCredentials.getDeviceId());
-        String accessToken = deviceCredentials.getCredentialsId();
-        assertNotNull(accessToken);
-
-        String setGpioRequest = "{\"method\":\"setGpio\",\"params\":{\"pin\": \"23\",\"value\": 1}}";
-        String deviceId = savedDevice.getId().getId().toString();
-
-        doPostAsync("/api/plugins/rpc/oneway/" + deviceId, setGpioRequest, String.class, status().isRequestTimeout(),
-                asyncContextTimeoutToUseRpcPlugin);
+    protected void processOneWayRpcTestGateway(String deviceName) throws Exception {
+        MqttAsyncClient client = getMqttAsyncClient(gatewayAccessToken);
+        String payload = "{\"device\":\"" + deviceName + "\"}";
+        byte[] payloadBytes = payload.getBytes();
+        validateOneWayRpcGatewayResponse(deviceName, client, payloadBytes);
     }
 
-    @Test
-    public void testServerMqttOneWayRpcDeviceDoesNotExist() throws Exception {
-        String setGpioRequest = "{\"method\":\"setGpio\",\"params\":{\"pin\": \"23\",\"value\": 1}}";
-        String nonExistentDeviceId = UUIDs.timeBased().toString();
+    protected void processTwoWayRpcTest() throws Exception {
+        MqttAsyncClient client = getMqttAsyncClient(accessToken);
+        client.subscribe(MqttTopics.DEVICE_RPC_REQUESTS_SUB_TOPIC, 1);
 
-        String result = doPostAsync("/api/plugins/rpc/oneway/" + nonExistentDeviceId, setGpioRequest, String.class,
-                status().isNotFound());
-        Assert.assertEquals(PluginProcessingContext.DEVICE_WITH_REQUESTED_ID_NOT_FOUND, result);
-    }
+        CountDownLatch latch = new CountDownLatch(1);
+        TestMqttCallback callback = new TestMqttCallback(client, latch);
+        client.setCallback(callback);
 
-    @Test
-    public void testServerMqttTwoWayRpc() throws Exception {
-        Device device = new Device();
-        device.setName("Test Two-Way Server-Side RPC");
-        device.setType("default");
-        Device savedDevice = getSavedDevice(device);
-        DeviceCredentials deviceCredentials = getDeviceCredentials(savedDevice);
-        assertEquals(savedDevice.getId(), deviceCredentials.getDeviceId());
-        String accessToken = deviceCredentials.getCredentialsId();
-        assertNotNull(accessToken);
+        Thread.sleep(1000);
 
-        String clientId = MqttAsyncClient.generateClientId();
-        MqttAsyncClient client = new MqttAsyncClient(MQTT_URL, clientId);
-
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setUserName(accessToken);
-        client.connect(options).waitForCompletion();
-        client.subscribe("v1/devices/me/rpc/request/+", 1);
-        client.setCallback(new TestMqttCallback(client));
-
-        String setGpioRequest = "{\"method\":\"setGpio\",\"params\":{\"pin\": \"23\",\"value\": 1}}";
+        String setGpioRequest = "{\"method\":\"setGpio\",\"params\":{\"pin\": \"26\",\"value\": 1}}";
         String deviceId = savedDevice.getId().getId().toString();
 
         String result = doPostAsync("/api/plugins/rpc/twoway/" + deviceId, setGpioRequest, String.class, status().isOk());
-        Assert.assertEquals("{\"value1\":\"A\",\"value2\":\"B\"}", result);
+        String expected = "{\"value1\":\"A\",\"value2\":\"B\"}";
+        latch.await(3, TimeUnit.SECONDS);
+        Assert.assertEquals(expected, result);
     }
 
-    @Test
-    public void testServerMqttTwoWayRpcDeviceOffline() throws Exception {
-        Device device = new Device();
-        device.setName("Test Two-Way Server-Side RPC Device Offline");
-        device.setType("default");
-        Device savedDevice = getSavedDevice(device);
-        DeviceCredentials deviceCredentials = getDeviceCredentials(savedDevice);
-        assertEquals(savedDevice.getId(), deviceCredentials.getDeviceId());
-        String accessToken = deviceCredentials.getCredentialsId();
-        assertNotNull(accessToken);
+    protected void processTwoWayRpcTestGateway(String deviceName) throws Exception {
+        MqttAsyncClient client = getMqttAsyncClient(gatewayAccessToken);
 
-        String setGpioRequest = "{\"method\":\"setGpio\",\"params\":{\"pin\": \"23\",\"value\": 1}}";
+        String payload = "{\"device\":\"" + deviceName + "\"}";
+        byte[] payloadBytes = payload.getBytes();
+
+        validateTwoWayRpcGateway(deviceName, client, payloadBytes);
+    }
+
+    protected void validateOneWayRpcGatewayResponse(String deviceName, MqttAsyncClient client, byte[] payloadBytes) throws Exception {
+        publishMqttMsg(client, payloadBytes, MqttTopics.GATEWAY_CONNECT_TOPIC);
+
+        Device savedDevice = doExecuteWithRetriesAndInterval(
+                () -> getDeviceByName(deviceName),
+                20,
+                100
+        );
+        assertNotNull(savedDevice);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        TestMqttCallback callback = new TestMqttCallback(client, latch);
+        client.setCallback(callback);
+
+        client.subscribe(MqttTopics.GATEWAY_RPC_TOPIC, MqttQoS.AT_MOST_ONCE.value());
+
+        Thread.sleep(1000);
+
+        String setGpioRequest = "{\"method\": \"toggle_gpio\", \"params\": {\"pin\":1}}";
         String deviceId = savedDevice.getId().getId().toString();
-
-        doPostAsync("/api/plugins/rpc/twoway/" + deviceId, setGpioRequest, String.class, status().isRequestTimeout(),
-                asyncContextTimeoutToUseRpcPlugin);
+        String result = doPostAsync("/api/plugins/rpc/oneway/" + deviceId, setGpioRequest, String.class, status().isOk());
+        Assert.assertTrue(StringUtils.isEmpty(result));
+        latch.await(3, TimeUnit.SECONDS);
+        assertEquals(MqttQoS.AT_MOST_ONCE.value(), callback.getQoS());
     }
 
-    @Test
-    public void testServerMqttTwoWayRpcDeviceDoesNotExist() throws Exception {
-        String setGpioRequest = "{\"method\":\"setGpio\",\"params\":{\"pin\": \"23\",\"value\": 1}}";
-        String nonExistentDeviceId = UUIDs.timeBased().toString();
+    protected void validateTwoWayRpcGateway(String deviceName, MqttAsyncClient client, byte[] payloadBytes) throws Exception {
+        publishMqttMsg(client, payloadBytes, MqttTopics.GATEWAY_CONNECT_TOPIC);
 
-        String result = doPostAsync("/api/plugins/rpc/twoway/" + nonExistentDeviceId, setGpioRequest, String.class,
-                status().isNotFound());
-        Assert.assertEquals(PluginProcessingContext.DEVICE_WITH_REQUESTED_ID_NOT_FOUND, result);
+        Device savedDevice = doExecuteWithRetriesAndInterval(
+                () -> getDeviceByName(deviceName),
+                20,
+                100
+        );
+        assertNotNull(savedDevice);
+
+        CountDownLatch latch = new CountDownLatch(1);
+        TestMqttCallback callback = new TestMqttCallback(client, latch);
+        client.setCallback(callback);
+
+        client.subscribe(MqttTopics.GATEWAY_RPC_TOPIC, MqttQoS.AT_MOST_ONCE.value());
+
+        Thread.sleep(1000);
+
+        String setGpioRequest = "{\"method\": \"toggle_gpio\", \"params\": {\"pin\":1}}";
+        String deviceId = savedDevice.getId().getId().toString();
+        String result = doPostAsync("/api/plugins/rpc/twoway/" + deviceId, setGpioRequest, String.class, status().isOk());
+        latch.await(3, TimeUnit.SECONDS);
+        String expected = "{\"success\":true}";
+        assertEquals(expected, result);
+        assertEquals(MqttQoS.AT_MOST_ONCE.value(), callback.getQoS());
     }
 
-    private Device getSavedDevice(Device device) throws Exception {
-        return doPost("/api/device", device, Device.class);
+    private Device getDeviceByName(String deviceName) throws Exception {
+        return doGet("/api/tenant/devices?deviceName=" + deviceName, Device.class);
     }
 
-    private DeviceCredentials getDeviceCredentials(Device savedDevice) throws Exception {
-        return doGet("/api/device/" + savedDevice.getId().getId().toString() + "/credentials", DeviceCredentials.class);
+    protected MqttMessage processMessageArrived(String requestTopic, MqttMessage mqttMessage) throws MqttException, InvalidProtocolBufferException {
+        MqttMessage message = new MqttMessage();
+        if (requestTopic.startsWith(MqttTopics.BASE_DEVICE_API_TOPIC)) {
+            message.setPayload(DEVICE_RESPONSE.getBytes(StandardCharset.UTF_8));
+        } else {
+            JsonNode requestMsgNode = JacksonUtil.toJsonNode(new String(mqttMessage.getPayload(), StandardCharset.UTF_8));
+            String deviceName = requestMsgNode.get("device").asText();
+            int requestId = requestMsgNode.get("data").get("id").asInt();
+            message.setPayload(("{\"device\": \"" + deviceName + "\", \"id\": " + requestId + ", \"data\": {\"success\": true}}").getBytes(StandardCharset.UTF_8));
+        }
+        return message;
     }
 
-    private Long getAsyncContextTimeoutToUseRpcPlugin() throws Exception {
-        TextPageData<PluginMetaData> plugins = doGetTyped("/api/plugin/system?limit=1&textSearch=system rpc plugin",
-                new TypeReference<TextPageData<PluginMetaData>>(){});
-        Long systemRpcPluginTimeout = plugins.getData().iterator().next().getConfiguration().get("defaultTimeout").asLong();
-        return systemRpcPluginTimeout + TIME_TO_HANDLE_REQUEST;
-    }
-
-    private static class TestMqttCallback implements MqttCallback {
+    private class TestMqttCallback implements MqttCallback {
 
         private final MqttAsyncClient client;
+        private final CountDownLatch latch;
+        private Integer qoS;
 
-        TestMqttCallback(MqttAsyncClient client) {
+        TestMqttCallback(MqttAsyncClient client, CountDownLatch latch) {
             this.client = client;
+            this.latch = latch;
+        }
+
+        int getQoS() {
+            return qoS;
         }
 
         @Override
@@ -219,10 +221,10 @@ public abstract class AbstractMqttServerSideRpcIntegrationTest extends AbstractC
         @Override
         public void messageArrived(String requestTopic, MqttMessage mqttMessage) throws Exception {
             log.info("Message Arrived: " + Arrays.toString(mqttMessage.getPayload()));
-            MqttMessage message = new MqttMessage();
             String responseTopic = requestTopic.replace("request", "response");
-            message.setPayload("{\"value1\":\"A\", \"value2\":\"B\"}".getBytes("UTF-8"));
-            client.publish(responseTopic, message);
+            qoS = mqttMessage.getQos();
+            client.publish(responseTopic, processMessageArrived(requestTopic, mqttMessage));
+            latch.countDown();
         }
 
         @Override

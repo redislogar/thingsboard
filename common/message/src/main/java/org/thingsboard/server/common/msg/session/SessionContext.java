@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,20 +15,15 @@
  */
 package org.thingsboard.server.common.msg.session;
 
-import org.thingsboard.server.common.data.security.DeviceCredentialsFilter;
-import org.thingsboard.server.common.msg.aware.SessionAwareMsg;
-import org.thingsboard.server.common.msg.session.ex.SessionException;
+import org.thingsboard.server.common.data.DeviceProfile;
 
-public interface SessionContext extends SessionAwareMsg {
+import java.util.UUID;
 
-    SessionType getSessionType();
+public interface SessionContext {
 
-    void onMsg(SessionActorToAdaptorMsg msg) throws SessionException;
+    UUID getSessionId();
 
-    void onMsg(SessionCtrlMsg msg) throws SessionException;
+    int nextMsgId();
 
-    boolean isClosed();
-
-    long getTimeout();
-
+    void onProfileUpdate(DeviceProfile deviceProfile);
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,11 @@ import org.thingsboard.server.dao.model.ModelConstants;
 import org.thingsboard.server.dao.model.SearchTextEntity;
 import org.thingsboard.server.dao.util.mapping.JsonStringType;
 
-import javax.persistence.*;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Table;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -49,7 +53,7 @@ public class ComponentDescriptorEntity extends BaseSqlEntity<ComponentDescriptor
     @Column(name = ModelConstants.COMPONENT_DESCRIPTOR_NAME_PROPERTY)
     private String name;
 
-    @Column(name = ModelConstants.COMPONENT_DESCRIPTOR_CLASS_PROPERTY)
+    @Column(name = ModelConstants.COMPONENT_DESCRIPTOR_CLASS_PROPERTY, unique = true)
     private String clazz;
 
     @Type(type = "json")
@@ -67,8 +71,9 @@ public class ComponentDescriptorEntity extends BaseSqlEntity<ComponentDescriptor
 
     public ComponentDescriptorEntity(ComponentDescriptor component) {
         if (component.getId() != null) {
-            this.setId(component.getId().getId());
+            this.setUuid(component.getId().getId());
         }
+        this.setCreatedTime(component.getCreatedTime());
         this.actions = component.getActions();
         this.type = component.getType();
         this.scope = component.getScope();
@@ -80,7 +85,8 @@ public class ComponentDescriptorEntity extends BaseSqlEntity<ComponentDescriptor
 
     @Override
     public ComponentDescriptor toData() {
-        ComponentDescriptor data = new ComponentDescriptor(new ComponentDescriptorId(this.getId()));
+        ComponentDescriptor data = new ComponentDescriptor(new ComponentDescriptorId(this.getUuid()));
+        data.setCreatedTime(createdTime);
         data.setType(type);
         data.setScope(scope);
         data.setName(this.getName());

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,12 @@
  */
 package org.thingsboard.server.dao.widget;
 
-import org.thingsboard.server.common.data.page.TextPageLink;
+import org.thingsboard.server.common.data.id.TenantId;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.common.data.widget.WidgetsBundle;
 import org.thingsboard.server.dao.Dao;
 
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,10 +31,11 @@ public interface WidgetsBundleDao extends Dao<WidgetsBundle> {
     /**
      * Save or update widgets bundle object
      *
+     * @param tenantId the tenantId
      * @param widgetsBundle the widgets bundle object
      * @return saved widgets bundle object
      */
-    WidgetsBundle save(WidgetsBundle widgetsBundle);
+    WidgetsBundle save(TenantId tenantId, WidgetsBundle widgetsBundle);
 
     /**
      * Find widgets bundle by tenantId and alias.
@@ -50,7 +52,7 @@ public interface WidgetsBundleDao extends Dao<WidgetsBundle> {
      * @param pageLink the page link
      * @return the list of widgets bundles objects
      */
-    List<WidgetsBundle> findSystemWidgetsBundles(TextPageLink pageLink);
+    PageData<WidgetsBundle> findSystemWidgetsBundles(TenantId tenantId, PageLink pageLink);
 
     /**
      * Find tenant widgets bundles by tenantId and page link.
@@ -59,7 +61,7 @@ public interface WidgetsBundleDao extends Dao<WidgetsBundle> {
      * @param pageLink the page link
      * @return the list of widgets bundles objects
      */
-    List<WidgetsBundle> findTenantWidgetsBundlesByTenantId(UUID tenantId, TextPageLink pageLink);
+    PageData<WidgetsBundle> findTenantWidgetsBundlesByTenantId(UUID tenantId, PageLink pageLink);
 
     /**
      * Find all tenant widgets bundles (including system) by tenantId and page link.
@@ -68,7 +70,7 @@ public interface WidgetsBundleDao extends Dao<WidgetsBundle> {
      * @param pageLink the page link
      * @return the list of widgets bundles objects
      */
-    List<WidgetsBundle> findAllTenantWidgetsBundlesByTenantId(UUID tenantId, TextPageLink pageLink);
+    PageData<WidgetsBundle> findAllTenantWidgetsBundlesByTenantId(UUID tenantId, PageLink pageLink);
 
 }
 

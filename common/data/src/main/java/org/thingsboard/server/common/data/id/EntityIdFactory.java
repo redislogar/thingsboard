@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 package org.thingsboard.server.common.data.id;
 
 import org.thingsboard.server.common.data.EntityType;
-import org.thingsboard.server.common.data.alarm.AlarmId;
 
 import java.util.UUID;
 
@@ -33,6 +32,10 @@ public class EntityIdFactory {
         return getByTypeAndUuid(EntityType.valueOf(type), uuid);
     }
 
+    public static EntityId getByTypeAndUuid(EntityType type, String uuid) {
+        return getByTypeAndUuid(type, UUID.fromString(uuid));
+    }
+
     public static EntityId getByTypeAndUuid(EntityType type, UUID uuid) {
         switch (type) {
             case TENANT:
@@ -41,10 +44,6 @@ public class EntityIdFactory {
                 return new CustomerId(uuid);
             case USER:
                 return new UserId(uuid);
-            case RULE:
-                return new RuleId(uuid);
-            case PLUGIN:
-                return new PluginId(uuid);
             case DASHBOARD:
                 return new DashboardId(uuid);
             case DEVICE:
@@ -53,7 +52,22 @@ public class EntityIdFactory {
                 return new AssetId(uuid);
             case ALARM:
                 return new AlarmId(uuid);
+            case RULE_CHAIN:
+                return new RuleChainId(uuid);
+            case RULE_NODE:
+                return new RuleNodeId(uuid);
+            case ENTITY_VIEW:
+                return new EntityViewId(uuid);
+            case WIDGETS_BUNDLE:
+                return new WidgetsBundleId(uuid);
+            case WIDGET_TYPE:
+                return new WidgetTypeId(uuid);
+            case DEVICE_PROFILE:
+                return new DeviceProfileId(uuid);
+            case TENANT_PROFILE:
+                return new TenantProfileId(uuid);
         }
         throw new IllegalArgumentException("EntityType " + type + " is not supported!");
     }
+
 }

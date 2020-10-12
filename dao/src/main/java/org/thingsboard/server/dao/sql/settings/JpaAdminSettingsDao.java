@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,15 +20,16 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Component;
 import org.thingsboard.server.common.data.AdminSettings;
+import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.dao.DaoUtil;
 import org.thingsboard.server.dao.model.sql.AdminSettingsEntity;
 import org.thingsboard.server.dao.settings.AdminSettingsDao;
 import org.thingsboard.server.dao.sql.JpaAbstractDao;
-import org.thingsboard.server.dao.util.SqlDao;
+
+import java.util.UUID;
 
 @Component
 @Slf4j
-@SqlDao
 public class JpaAdminSettingsDao extends JpaAbstractDao<AdminSettingsEntity, AdminSettings> implements AdminSettingsDao {
 
     @Autowired
@@ -40,12 +41,12 @@ public class JpaAdminSettingsDao extends JpaAbstractDao<AdminSettingsEntity, Adm
     }
 
     @Override
-    protected CrudRepository<AdminSettingsEntity, String> getCrudRepository() {
+    protected CrudRepository<AdminSettingsEntity, UUID> getCrudRepository() {
         return adminSettingsRepository;
     }
 
     @Override
-    public AdminSettings findByKey(String key) {
+    public AdminSettings findByKey(TenantId tenantId, String key) {
         return DaoUtil.getData(adminSettingsRepository.findByKey(key));
     }
 }

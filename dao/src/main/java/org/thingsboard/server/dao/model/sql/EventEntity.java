@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 package org.thingsboard.server.dao.model.sql;
 
-import com.datastax.driver.core.utils.UUIDs;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -31,9 +30,22 @@ import org.thingsboard.server.dao.model.BaseEntity;
 import org.thingsboard.server.dao.model.BaseSqlEntity;
 import org.thingsboard.server.dao.util.mapping.JsonStringType;
 
-import javax.persistence.*;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.Table;
+import java.util.UUID;
 
-import static org.thingsboard.server.dao.model.ModelConstants.*;
+import static org.thingsboard.server.dao.model.ModelConstants.EPOCH_DIFF;
+import static org.thingsboard.server.dao.model.ModelConstants.EVENT_BODY_PROPERTY;
+import static org.thingsboard.server.dao.model.ModelConstants.EVENT_COLUMN_FAMILY_NAME;
+import static org.thingsboard.server.dao.model.ModelConstants.EVENT_ENTITY_ID_PROPERTY;
+import static org.thingsboard.server.dao.model.ModelConstants.EVENT_ENTITY_TYPE_PROPERTY;
+import static org.thingsboard.server.dao.model.ModelConstants.EVENT_TENANT_ID_PROPERTY;
+import static org.thingsboard.server.dao.model.ModelConstants.EVENT_TYPE_PROPERTY;
+import static org.thingsboard.server.dao.model.ModelConstants.EVENT_UID_PROPERTY;
+import static org.thingsboard.server.dao.model.ModelConstants.TS_COLUMN;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -41,17 +53,17 @@ import static org.thingsboard.server.dao.model.ModelConstants.*;
 @TypeDef(name = "json", typeClass = JsonStringType.class)
 @Table(name = EVENT_COLUMN_FAMILY_NAME)
 @NoArgsConstructor
-public class EventEntity  extends BaseSqlEntity<Event> implements BaseEntity<Event> {
+public class EventEntity extends BaseSqlEntity<Event> implements BaseEntity<Event> {
 
     @Column(name = EVENT_TENANT_ID_PROPERTY)
-    private String tenantId;
+    private UUID tenantId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = EVENT_ENTITY_TYPE_PROPERTY)
     private EntityType entityType;
 
     @Column(name = EVENT_ENTITY_ID_PROPERTY)
-    private String entityId;
+    private UUID entityId;
 
     @Column(name = EVENT_TYPE_PROPERTY)
     private String eventType;
@@ -63,16 +75,23 @@ public class EventEntity  extends BaseSqlEntity<Event> implements BaseEntity<Eve
     @Column(name = EVENT_BODY_PROPERTY)
     private JsonNode body;
 
+    @Column(name = TS_COLUMN)
+    private long ts;
+
     public EventEntity(Event event) {
         if (event.getId() != null) {
-            this.setId(event.getId().getId());
+            this.setUuid(event.getId().getId());
+            this.ts = getTs(event.getId().getId());
+        } else {
+            this.ts = System.currentTimeMillis();
         }
+        this.setCreatedTime(event.getCreatedTime());
         if (event.getTenantId() != null) {
-            this.tenantId = toString(event.getTenantId().getId());
+            this.tenantId = event.getTenantId().getId();
         }
         if (event.getEntityId() != null) {
             this.entityType = event.getEntityId().getEntityType();
-            this.entityId = toString(event.getEntityId().getId());
+            this.entityId = event.getEntityId().getId();
         }
         this.eventType = event.getType();
         this.eventUid = event.getUid();
@@ -82,13 +101,17 @@ public class EventEntity  extends BaseSqlEntity<Event> implements BaseEntity<Eve
 
     @Override
     public Event toData() {
-        Event event = new Event(new EventId(getId()));
-        event.setCreatedTime(UUIDs.unixTimestamp(getId()));
-        event.setTenantId(new TenantId(toUUID(tenantId)));
-        event.setEntityId(EntityIdFactory.getByTypeAndUuid(entityType, toUUID(entityId)));
+        Event event = new Event(new EventId(this.getUuid()));
+        event.setCreatedTime(createdTime);
+        event.setTenantId(new TenantId(tenantId));
+        event.setEntityId(EntityIdFactory.getByTypeAndUuid(entityType, entityId));
         event.setBody(body);
         event.setType(eventType);
         event.setUid(eventUid);
         return event;
+    }
+
+    private static long getTs(UUID uuid) {
+        return (uuid.timestamp() - EPOCH_DIFF) / 10000;
     }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,78 +15,89 @@
  */
 package org.thingsboard.server.dao.nosql;
 
-import com.datastax.driver.core.*;
-import com.datastax.driver.core.exceptions.CodecNotFoundException;
+import com.datastax.oss.driver.api.core.ConsistencyLevel;
+import com.datastax.oss.driver.api.core.cql.AsyncResultSet;
+import com.datastax.oss.driver.api.core.cql.BoundStatement;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
+import com.datastax.oss.driver.api.core.cql.Statement;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.dao.cassandra.CassandraCluster;
-import org.thingsboard.server.dao.model.type.*;
+import org.thingsboard.server.dao.cassandra.guava.GuavaSession;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @Slf4j
 public abstract class CassandraAbstractDao {
 
     @Autowired
+    @Qualifier("CassandraCluster")
     protected CassandraCluster cluster;
 
-    private Session session;
+    private ConcurrentMap<String, PreparedStatement> preparedStatementMap = new ConcurrentHashMap<>();
+
+    @Autowired
+    private CassandraBufferedRateExecutor rateLimiter;
+
+    private GuavaSession session;
 
     private ConsistencyLevel defaultReadLevel;
     private ConsistencyLevel defaultWriteLevel;
 
-    protected Session getSession() {
+    private GuavaSession getSession() {
         if (session == null) {
             session = cluster.getSession();
             defaultReadLevel = cluster.getDefaultReadConsistencyLevel();
             defaultWriteLevel = cluster.getDefaultWriteConsistencyLevel();
-            CodecRegistry registry = session.getCluster().getConfiguration().getCodecRegistry();
-            registerCodecIfNotFound(registry, new JsonCodec());
-            registerCodecIfNotFound(registry, new DeviceCredentialsTypeCodec());
-            registerCodecIfNotFound(registry, new AuthorityCodec());
-            registerCodecIfNotFound(registry, new ComponentLifecycleStateCodec());
-            registerCodecIfNotFound(registry, new ComponentTypeCodec());
-            registerCodecIfNotFound(registry, new ComponentScopeCodec());
-            registerCodecIfNotFound(registry, new EntityTypeCodec());
         }
         return session;
     }
 
-    private void registerCodecIfNotFound(CodecRegistry registry, TypeCodec<?> codec) {
-        try {
-            registry.codecFor(codec.getCqlType(), codec.getJavaType());
-        } catch (CodecNotFoundException e) {
-            registry.register(codec);
+    protected PreparedStatement prepare(String query) {
+        return preparedStatementMap.computeIfAbsent(query, i -> getSession().prepare(i));
+    }
+
+    protected AsyncResultSet executeRead(TenantId tenantId, Statement statement) {
+        return execute(tenantId, statement, defaultReadLevel);
+    }
+
+    protected AsyncResultSet executeWrite(TenantId tenantId, Statement statement) {
+        return execute(tenantId, statement, defaultWriteLevel);
+    }
+
+    protected TbResultSetFuture executeAsyncRead(TenantId tenantId, Statement statement) {
+        return executeAsync(tenantId, statement, defaultReadLevel);
+    }
+
+    protected TbResultSetFuture executeAsyncWrite(TenantId tenantId, Statement statement) {
+        return executeAsync(tenantId, statement, defaultWriteLevel);
+    }
+
+    private AsyncResultSet execute(TenantId tenantId, Statement statement, ConsistencyLevel level) {
+        if (log.isDebugEnabled()) {
+            log.debug("Execute cassandra statement {}", statementToString(statement));
         }
+        return executeAsync(tenantId, statement, level).getUninterruptibly();
     }
 
-    protected ResultSet executeRead(Statement statement) {
-        return execute(statement, defaultReadLevel);
-    }
-
-    protected ResultSet executeWrite(Statement statement) {
-        return execute(statement, defaultWriteLevel);
-    }
-
-    protected ResultSetFuture executeAsyncRead(Statement statement) {
-        return executeAsync(statement, defaultReadLevel);
-    }
-
-    protected ResultSetFuture executeAsyncWrite(Statement statement) {
-        return executeAsync(statement, defaultWriteLevel);
-    }
-
-    private ResultSet execute(Statement statement, ConsistencyLevel level) {
-        log.debug("Execute cassandra statement {}", statement);
+    private TbResultSetFuture executeAsync(TenantId tenantId, Statement statement, ConsistencyLevel level) {
+        if (log.isDebugEnabled()) {
+            log.debug("Execute cassandra async statement {}", statementToString(statement));
+        }
         if (statement.getConsistencyLevel() == null) {
             statement.setConsistencyLevel(level);
         }
-        return getSession().execute(statement);
+        return rateLimiter.submit(new CassandraStatementTask(tenantId, getSession(), statement));
     }
 
-    private ResultSetFuture executeAsync(Statement statement, ConsistencyLevel level) {
-        log.debug("Execute cassandra async statement {}", statement);
-        if (statement.getConsistencyLevel() == null) {
-            statement.setConsistencyLevel(level);
+    private static String statementToString(Statement statement) {
+        if (statement instanceof BoundStatement) {
+            return ((BoundStatement) statement).getPreparedStatement().getQuery();
+        } else {
+            return statement.toString();
         }
-        return getSession().executeAsync(statement);
     }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,81 +15,71 @@
  */
 package org.thingsboard.server.actors.device;
 
-import akka.event.Logging;
-import akka.event.LoggingAdapter;
+import lombok.extern.slf4j.Slf4j;
+import org.thingsboard.rule.engine.api.msg.DeviceAttributesEventNotificationMsg;
+import org.thingsboard.rule.engine.api.msg.DeviceNameOrTypeUpdateMsg;
 import org.thingsboard.server.actors.ActorSystemContext;
-import org.thingsboard.server.actors.rule.RulesProcessedMsg;
+import org.thingsboard.server.actors.TbActorCtx;
+import org.thingsboard.server.actors.TbActorException;
 import org.thingsboard.server.actors.service.ContextAwareActor;
-import org.thingsboard.server.actors.service.ContextBasedCreator;
-import org.thingsboard.server.actors.tenant.RuleChainDeviceMsg;
 import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.common.msg.cluster.ClusterEventMsg;
-import org.thingsboard.server.common.msg.device.ToDeviceActorMsg;
-import org.thingsboard.server.extensions.api.device.DeviceAttributesEventNotificationMsg;
-import org.thingsboard.server.extensions.api.device.DeviceCredentialsUpdateNotificationMsg;
-import org.thingsboard.server.extensions.api.device.DeviceNameOrTypeUpdateMsg;
-import org.thingsboard.server.extensions.api.device.ToDeviceActorNotificationMsg;
-import org.thingsboard.server.extensions.api.plugins.msg.*;
+import org.thingsboard.server.common.msg.TbActorMsg;
+import org.thingsboard.server.common.msg.timeout.DeviceActorServerSideRpcTimeoutMsg;
+import org.thingsboard.server.service.rpc.ToDeviceRpcRequestActorMsg;
+import org.thingsboard.server.service.transport.msg.TransportToDeviceActorMsgWrapper;
 
+@Slf4j
 public class DeviceActor extends ContextAwareActor {
 
-    private final LoggingAdapter logger = Logging.getLogger(getContext().system(), this);
-
-    private final TenantId tenantId;
-    private final DeviceId deviceId;
     private final DeviceActorMessageProcessor processor;
 
-    private DeviceActor(ActorSystemContext systemContext, TenantId tenantId, DeviceId deviceId) {
+    DeviceActor(ActorSystemContext systemContext, TenantId tenantId, DeviceId deviceId) {
         super(systemContext);
-        this.tenantId = tenantId;
-        this.deviceId = deviceId;
-        this.processor = new DeviceActorMessageProcessor(systemContext, logger, deviceId);
+        this.processor = new DeviceActorMessageProcessor(systemContext, tenantId, deviceId);
     }
 
     @Override
-    public void onReceive(Object msg) throws Exception {
-        if (msg instanceof RuleChainDeviceMsg) {
-            processor.process(context(), (RuleChainDeviceMsg) msg);
-        } else if (msg instanceof RulesProcessedMsg) {
-            processor.onRulesProcessedMsg(context(), (RulesProcessedMsg) msg);
-        } else if (msg instanceof ToDeviceActorMsg) {
-            processor.process(context(), (ToDeviceActorMsg) msg);
-        } else if (msg instanceof ToDeviceActorNotificationMsg) {
-            if (msg instanceof DeviceAttributesEventNotificationMsg) {
-                processor.processAttributesUpdate(context(), (DeviceAttributesEventNotificationMsg) msg);
-            } else if (msg instanceof ToDeviceRpcRequestPluginMsg) {
-                processor.processRpcRequest(context(), (ToDeviceRpcRequestPluginMsg) msg);
-            } else if (msg instanceof DeviceCredentialsUpdateNotificationMsg){
-                processor.processCredentialsUpdate();
-            } else if (msg instanceof DeviceNameOrTypeUpdateMsg){
-                processor.processNameOrTypeUpdate((DeviceNameOrTypeUpdateMsg) msg);
-            }
-        } else if (msg instanceof TimeoutMsg) {
-            processor.processTimeout(context(), (TimeoutMsg) msg);
-        } else if (msg instanceof ClusterEventMsg) {
-            processor.processClusterEventMsg((ClusterEventMsg) msg);
-        } else {
-            logger.debug("[{}][{}] Unknown msg type.", tenantId, deviceId, msg.getClass().getName());
+    public void init(TbActorCtx ctx) throws TbActorException {
+        super.init(ctx);
+        log.debug("[{}][{}] Starting device actor.", processor.tenantId, processor.deviceId);
+        try {
+            processor.initSessionTimeout(ctx);
+            log.debug("[{}][{}] Device actor started.", processor.tenantId, processor.deviceId);
+        } catch (Exception e) {
+            log.warn("[{}][{}] Unknown failure", processor.tenantId, processor.deviceId, e);
+            throw new TbActorException("Failed to initialize device actor", e);
         }
     }
 
-    public static class ActorCreator extends ContextBasedCreator<DeviceActor> {
-        private static final long serialVersionUID = 1L;
-
-        private final TenantId tenantId;
-        private final DeviceId deviceId;
-
-        public ActorCreator(ActorSystemContext context, TenantId tenantId, DeviceId deviceId) {
-            super(context);
-            this.tenantId = tenantId;
-            this.deviceId = deviceId;
+    @Override
+    protected boolean doProcess(TbActorMsg msg) {
+        switch (msg.getMsgType()) {
+            case TRANSPORT_TO_DEVICE_ACTOR_MSG:
+                processor.process(ctx, (TransportToDeviceActorMsgWrapper) msg);
+                break;
+            case DEVICE_ATTRIBUTES_UPDATE_TO_DEVICE_ACTOR_MSG:
+                processor.processAttributesUpdate(ctx, (DeviceAttributesEventNotificationMsg) msg);
+                break;
+            case DEVICE_CREDENTIALS_UPDATE_TO_DEVICE_ACTOR_MSG:
+                processor.processCredentialsUpdate();
+                break;
+            case DEVICE_NAME_OR_TYPE_UPDATE_TO_DEVICE_ACTOR_MSG:
+                processor.processNameOrTypeUpdate((DeviceNameOrTypeUpdateMsg) msg);
+                break;
+            case DEVICE_RPC_REQUEST_TO_DEVICE_ACTOR_MSG:
+                processor.processRpcRequest(ctx, (ToDeviceRpcRequestActorMsg) msg);
+                break;
+            case DEVICE_ACTOR_SERVER_SIDE_RPC_TIMEOUT_MSG:
+                processor.processServerSideRpcTimeout(ctx, (DeviceActorServerSideRpcTimeoutMsg) msg);
+                break;
+            case SESSION_TIMEOUT_MSG:
+                processor.checkSessionsTimeout();
+                break;
+            default:
+                return false;
         }
-
-        @Override
-        public DeviceActor create() throws Exception {
-            return new DeviceActor(context, tenantId, deviceId);
-        }
+        return true;
     }
 
 }

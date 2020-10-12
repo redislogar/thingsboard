@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package org.thingsboard.server.dao.service.attributes;
 
-import com.datastax.driver.core.utils.UUIDs;
+import com.datastax.oss.driver.api.core.uuid.Uuids;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -47,38 +47,38 @@ public abstract class BaseAttributesServiceTest extends AbstractServiceTest {
 
     @Test
     public void saveAndFetch() throws Exception {
-        DeviceId deviceId = new DeviceId(UUIDs.timeBased());
+        DeviceId deviceId = new DeviceId(Uuids.timeBased());
         KvEntry attrValue = new StringDataEntry("attribute1", "value1");
         AttributeKvEntry attr = new BaseAttributeKvEntry(attrValue, 42L);
-        attributesService.save(deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attr)).get();
-        Optional<AttributeKvEntry> saved = attributesService.find(deviceId, DataConstants.CLIENT_SCOPE, attr.getKey()).get();
+        attributesService.save(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attr)).get();
+        Optional<AttributeKvEntry> saved = attributesService.find(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, attr.getKey()).get();
         Assert.assertTrue(saved.isPresent());
         Assert.assertEquals(attr, saved.get());
     }
 
     @Test
     public void saveMultipleTypeAndFetch() throws Exception {
-        DeviceId deviceId = new DeviceId(UUIDs.timeBased());
+        DeviceId deviceId = new DeviceId(Uuids.timeBased());
         KvEntry attrOldValue = new StringDataEntry("attribute1", "value1");
         AttributeKvEntry attrOld = new BaseAttributeKvEntry(attrOldValue, 42L);
 
-        attributesService.save(deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrOld)).get();
-        Optional<AttributeKvEntry> saved = attributesService.find(deviceId, DataConstants.CLIENT_SCOPE, attrOld.getKey()).get();
+        attributesService.save(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrOld)).get();
+        Optional<AttributeKvEntry> saved = attributesService.find(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, attrOld.getKey()).get();
 
         Assert.assertTrue(saved.isPresent());
         Assert.assertEquals(attrOld, saved.get());
 
         KvEntry attrNewValue = new StringDataEntry("attribute1", "value2");
         AttributeKvEntry attrNew = new BaseAttributeKvEntry(attrNewValue, 73L);
-        attributesService.save(deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrNew)).get();
+        attributesService.save(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrNew)).get();
 
-        saved = attributesService.find(deviceId, DataConstants.CLIENT_SCOPE, attrOld.getKey()).get();
+        saved = attributesService.find(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, attrOld.getKey()).get();
         Assert.assertEquals(attrNew, saved.get());
     }
 
     @Test
     public void findAll() throws Exception {
-        DeviceId deviceId = new DeviceId(UUIDs.timeBased());
+        DeviceId deviceId = new DeviceId(Uuids.timeBased());
 
         KvEntry attrAOldValue = new StringDataEntry("A", "value1");
         AttributeKvEntry attrAOld = new BaseAttributeKvEntry(attrAOldValue, 42L);
@@ -87,11 +87,11 @@ public abstract class BaseAttributesServiceTest extends AbstractServiceTest {
         KvEntry attrBNewValue = new StringDataEntry("B", "value3");
         AttributeKvEntry attrBNew = new BaseAttributeKvEntry(attrBNewValue, 73L);
 
-        attributesService.save(deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrAOld)).get();
-        attributesService.save(deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrANew)).get();
-        attributesService.save(deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrBNew)).get();
+        attributesService.save(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrAOld)).get();
+        attributesService.save(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrANew)).get();
+        attributesService.save(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE, Collections.singletonList(attrBNew)).get();
 
-        List<AttributeKvEntry> saved = attributesService.findAll(deviceId, DataConstants.CLIENT_SCOPE).get();
+        List<AttributeKvEntry> saved = attributesService.findAll(SYSTEM_TENANT_ID, deviceId, DataConstants.CLIENT_SCOPE).get();
 
         Assert.assertNotNull(saved);
         Assert.assertEquals(2, saved.size());

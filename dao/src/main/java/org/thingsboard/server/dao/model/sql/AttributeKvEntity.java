@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,37 +16,36 @@
 package org.thingsboard.server.dao.model.sql;
 
 import lombok.Data;
-import org.thingsboard.server.common.data.EntityType;
-import org.thingsboard.server.common.data.kv.*;
+import org.thingsboard.server.common.data.kv.AttributeKvEntry;
+import org.thingsboard.server.common.data.kv.BaseAttributeKvEntry;
+import org.thingsboard.server.common.data.kv.BooleanDataEntry;
+import org.thingsboard.server.common.data.kv.DoubleDataEntry;
+import org.thingsboard.server.common.data.kv.JsonDataEntry;
+import org.thingsboard.server.common.data.kv.KvEntry;
+import org.thingsboard.server.common.data.kv.LongDataEntry;
+import org.thingsboard.server.common.data.kv.StringDataEntry;
 import org.thingsboard.server.dao.model.ToData;
 
-import javax.persistence.*;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.Table;
 import java.io.Serializable;
 
-import static org.thingsboard.server.dao.model.ModelConstants.*;
+import static org.thingsboard.server.dao.model.ModelConstants.BOOLEAN_VALUE_COLUMN;
+import static org.thingsboard.server.dao.model.ModelConstants.DOUBLE_VALUE_COLUMN;
+import static org.thingsboard.server.dao.model.ModelConstants.JSON_VALUE_COLUMN;
+import static org.thingsboard.server.dao.model.ModelConstants.LAST_UPDATE_TS_COLUMN;
+import static org.thingsboard.server.dao.model.ModelConstants.LONG_VALUE_COLUMN;
+import static org.thingsboard.server.dao.model.ModelConstants.STRING_VALUE_COLUMN;
 
 @Data
 @Entity
 @Table(name = "attribute_kv")
-@IdClass(AttributeKvCompositeKey.class)
 public class AttributeKvEntity implements ToData<AttributeKvEntry>, Serializable {
 
-    @Id
-    @Enumerated(EnumType.STRING)
-    @Column(name = ENTITY_TYPE_COLUMN)
-    private EntityType entityType;
-
-    @Id
-    @Column(name = ENTITY_ID_COLUMN)
-    private String entityId;
-
-    @Id
-    @Column(name = ATTRIBUTE_TYPE_COLUMN)
-    private String attributeType;
-
-    @Id
-    @Column(name = ATTRIBUTE_KEY_COLUMN)
-    private String attributeKey;
+    @EmbeddedId
+    private AttributeKvCompositeKey id;
 
     @Column(name = BOOLEAN_VALUE_COLUMN)
     private Boolean booleanValue;
@@ -60,6 +59,9 @@ public class AttributeKvEntity implements ToData<AttributeKvEntry>, Serializable
     @Column(name = DOUBLE_VALUE_COLUMN)
     private Double doubleValue;
 
+    @Column(name = JSON_VALUE_COLUMN)
+    private String jsonValue;
+
     @Column(name = LAST_UPDATE_TS_COLUMN)
     private Long lastUpdateTs;
 
@@ -67,14 +69,17 @@ public class AttributeKvEntity implements ToData<AttributeKvEntry>, Serializable
     public AttributeKvEntry toData() {
         KvEntry kvEntry = null;
         if (strValue != null) {
-            kvEntry = new StringDataEntry(attributeKey, strValue);
+            kvEntry = new StringDataEntry(id.getAttributeKey(), strValue);
         } else if (booleanValue != null) {
-            kvEntry = new BooleanDataEntry(attributeKey, booleanValue);
+            kvEntry = new BooleanDataEntry(id.getAttributeKey(), booleanValue);
         } else if (doubleValue != null) {
-            kvEntry = new DoubleDataEntry(attributeKey, doubleValue);
+            kvEntry = new DoubleDataEntry(id.getAttributeKey(), doubleValue);
         } else if (longValue != null) {
-            kvEntry = new LongDataEntry(attributeKey, longValue);
+            kvEntry = new LongDataEntry(id.getAttributeKey(), longValue);
+        } else if (jsonValue != null) {
+            kvEntry = new JsonDataEntry(id.getAttributeKey(), jsonValue);
         }
+
         return new BaseAttributeKvEntry(kvEntry, lastUpdateTs);
     }
 }

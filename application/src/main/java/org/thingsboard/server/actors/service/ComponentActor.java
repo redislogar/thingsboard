@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,24 +15,24 @@
  */
 package org.thingsboard.server.actors.service;
 
-import akka.actor.ActorRef;
-import akka.event.Logging;
-import akka.event.LoggingAdapter;
+import lombok.extern.slf4j.Slf4j;
 import org.thingsboard.server.actors.ActorSystemContext;
+import org.thingsboard.server.actors.TbActor;
+import org.thingsboard.server.actors.TbActorCtx;
+import org.thingsboard.server.actors.TbActorException;
 import org.thingsboard.server.actors.shared.ComponentMsgProcessor;
 import org.thingsboard.server.actors.stats.StatsPersistMsg;
 import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.plugin.ComponentLifecycleEvent;
-import org.thingsboard.server.common.msg.cluster.ClusterEventMsg;
 import org.thingsboard.server.common.msg.plugin.ComponentLifecycleMsg;
+import org.thingsboard.server.common.msg.queue.PartitionChangeMsg;
 
 /**
  * @author Andrew Shvayka
  */
+@Slf4j
 public abstract class ComponentActor<T extends EntityId, P extends ComponentMsgProcessor<T>> extends ContextAwareActor {
-
-    protected final LoggingAdapter logger = Logging.getLogger(getContext().system(), this);
 
     private long lastPersistedErrorTs = 0L;
     protected final TenantId tenantId;
@@ -47,63 +47,74 @@ public abstract class ComponentActor<T extends EntityId, P extends ComponentMsgP
         this.id = id;
     }
 
-    protected void setProcessor(P processor) {
-        this.processor = processor;
-    }
+    abstract protected P createProcessor(TbActorCtx ctx);
 
     @Override
-    public void preStart() {
+    public void init(TbActorCtx ctx) throws TbActorException {
+        super.init(ctx);
+        this.processor = createProcessor(ctx);
+        initProcessor(ctx);
+    }
+
+    protected void initProcessor(TbActorCtx ctx) throws TbActorException {
         try {
-            processor.start();
+            log.debug("[{}][{}][{}] Starting processor.", tenantId, id, id.getEntityType());
+            processor.start(ctx);
             logLifecycleEvent(ComponentLifecycleEvent.STARTED);
             if (systemContext.isStatisticsEnabled()) {
                 scheduleStatsPersistTick();
             }
         } catch (Exception e) {
-            logger.warning("[{}][{}] Failed to start {} processor: {}", tenantId, id, id.getEntityType(), e);
+            log.debug("[{}][{}] Failed to start {} processor.", tenantId, id, id.getEntityType(), e);
             logAndPersist("OnStart", e, true);
             logLifecycleEvent(ComponentLifecycleEvent.STARTED, e);
+            throw new TbActorException("Failed to init actor", e);
         }
     }
 
     private void scheduleStatsPersistTick() {
         try {
-            processor.scheduleStatsPersistTick(context(), systemContext.getStatisticsPersistFrequency());
+            processor.scheduleStatsPersistTick(ctx, systemContext.getStatisticsPersistFrequency());
         } catch (Exception e) {
-            logger.error("[{}][{}] Failed to schedule statistics store message. No statistics is going to be stored: {}", tenantId, id, e.getMessage());
+            log.error("[{}][{}] Failed to schedule statistics store message. No statistics is going to be stored: {}", tenantId, id, e.getMessage());
             logAndPersist("onScheduleStatsPersistMsg", e);
         }
     }
 
     @Override
-    public void postStop() {
+    public void destroy() {
         try {
-            processor.stop();
+            log.debug("[{}][{}][{}] Stopping processor.", tenantId, id, id.getEntityType());
+            if (processor != null) {
+                processor.stop(ctx);
+            }
             logLifecycleEvent(ComponentLifecycleEvent.STOPPED);
         } catch (Exception e) {
-            logger.warning("[{}][{}] Failed to stop {} processor: {}", tenantId, id, id.getEntityType(), e.getMessage());
+            log.warn("[{}][{}] Failed to stop {} processor: {}", tenantId, id, id.getEntityType(), e.getMessage());
             logAndPersist("OnStop", e, true);
             logLifecycleEvent(ComponentLifecycleEvent.STOPPED, e);
         }
     }
 
     protected void onComponentLifecycleMsg(ComponentLifecycleMsg msg) {
+        log.debug("[{}][{}][{}] onComponentLifecycleMsg: [{}]", tenantId, id, id.getEntityType(), msg.getEvent());
         try {
             switch (msg.getEvent()) {
                 case CREATED:
-                    processor.onCreated(context());
+                    processor.onCreated(ctx);
                     break;
                 case UPDATED:
-                    processor.onUpdate(context());
+                    processor.onUpdate(ctx);
                     break;
                 case ACTIVATED:
-                    processor.onActivate(context());
+                    processor.onActivate(ctx);
                     break;
                 case SUSPENDED:
-                    processor.onSuspend(context());
+                    processor.onSuspend(ctx);
                     break;
                 case DELETED:
-                    processor.onStop(context());
+                    processor.onStop(ctx);
+                    ctx.stop(ctx.getSelf());
                     break;
                 default:
                     break;
@@ -115,9 +126,9 @@ public abstract class ComponentActor<T extends EntityId, P extends ComponentMsgP
         }
     }
 
-    protected void onClusterEventMsg(ClusterEventMsg msg) {
+    protected void onClusterEventMsg(PartitionChangeMsg msg) {
         try {
-            processor.onClusterEventMsg(msg);
+            processor.onPartitionChangeMsg(msg);
         } catch (Exception e) {
             logAndPersist("onClusterEventMsg", e);
         }
@@ -125,7 +136,7 @@ public abstract class ComponentActor<T extends EntityId, P extends ComponentMsgP
 
     protected void onStatsPersistTick(EntityId entityId) {
         try {
-            systemContext.getStatsActor().tell(new StatsPersistMsg(messagesProcessed, errorsOccurred, tenantId, entityId), ActorRef.noSender());
+            systemContext.getStatsActor().tell(new StatsPersistMsg(messagesProcessed, errorsOccurred, tenantId, entityId));
             resetStatsCounters();
         } catch (Exception e) {
             logAndPersist("onStatsPersistTick", e);
@@ -141,17 +152,19 @@ public abstract class ComponentActor<T extends EntityId, P extends ComponentMsgP
         messagesProcessed++;
     }
 
-
     protected void logAndPersist(String method, Exception e) {
         logAndPersist(method, e, false);
     }
 
     private void logAndPersist(String method, Exception e, boolean critical) {
         errorsOccurred++;
+        String componentName = processor != null ? processor.getComponentName() : "Unknown";
         if (critical) {
-            logger.warning("[{}][{}] Failed to process {} msg: {}", id, tenantId, method, e);
+            log.debug("[{}][{}][{}] Failed to process method: {}", id, tenantId, componentName, method);
+            log.debug("Critical Error: ", e);
         } else {
-            logger.debug("[{}][{}] Failed to process {} msg: {}", id, tenantId, method, e);
+            log.trace("[{}][{}][{}] Failed to process method: {}", id, tenantId, componentName, method);
+            log.trace("Debug Error: ", e);
         }
         long ts = System.currentTimeMillis();
         if (ts - lastPersistedErrorTs > getErrorPersistFrequency()) {
@@ -160,11 +173,11 @@ public abstract class ComponentActor<T extends EntityId, P extends ComponentMsgP
         }
     }
 
-    protected void logLifecycleEvent(ComponentLifecycleEvent event) {
+    private void logLifecycleEvent(ComponentLifecycleEvent event) {
         logLifecycleEvent(event, null);
     }
 
-    protected void logLifecycleEvent(ComponentLifecycleEvent event, Exception e) {
+    private void logLifecycleEvent(ComponentLifecycleEvent event, Exception e) {
         systemContext.persistLifecycleEvent(tenantId, id, event, e);
     }
 

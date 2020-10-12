@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +17,13 @@ package org.thingsboard.server.common.data.asset;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.EqualsAndHashCode;
-import org.thingsboard.server.common.data.HasAdditionalInfo;
-import org.thingsboard.server.common.data.HasName;
-import org.thingsboard.server.common.data.SearchTextBased;
-import org.thingsboard.server.common.data.SearchTextBasedWithAdditionalInfo;
+import org.thingsboard.server.common.data.*;
 import org.thingsboard.server.common.data.id.AssetId;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.TenantId;
 
 @EqualsAndHashCode(callSuper = true)
-public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements HasName {
+public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements HasName, HasTenantId, HasCustomerId {
 
     private static final long serialVersionUID = 2807343040519543363L;
 
@@ -34,6 +31,7 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
     private CustomerId customerId;
     private String name;
     private String type;
+    private String label;
 
     public Asset() {
         super();
@@ -49,6 +47,7 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         this.customerId = asset.getCustomerId();
         this.name = asset.getName();
         this.type = asset.getType();
+        this.label = asset.getLabel();
     }
 
     public TenantId getTenantId() {
@@ -84,6 +83,14 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         this.type = type;
     }
 
+    public String getLabel() {
+        return label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
     @Override
     public String getSearchText() {
         return getName();
@@ -100,6 +107,8 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         builder.append(name);
         builder.append(", type=");
         builder.append(type);
+        builder.append(", label=");
+        builder.append(label);
         builder.append(", additionalInfo=");
         builder.append(getAdditionalInfo());
         builder.append(", createdTime=");

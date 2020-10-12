@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,14 +15,12 @@
  */
 package org.thingsboard.server.dao.model.sql;
 
-import com.datastax.driver.core.utils.UUIDs;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.hibernate.annotations.Type;
 import org.hibernate.annotations.TypeDef;
 import org.thingsboard.server.common.data.AdminSettings;
-import org.thingsboard.server.common.data.UUIDConverter;
 import org.thingsboard.server.common.data.id.AdminSettingsId;
 import org.thingsboard.server.dao.model.BaseEntity;
 import org.thingsboard.server.dao.model.BaseSqlEntity;
@@ -32,7 +30,9 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Table;
 
-import static org.thingsboard.server.dao.model.ModelConstants.*;
+import static org.thingsboard.server.dao.model.ModelConstants.ADMIN_SETTINGS_COLUMN_FAMILY_NAME;
+import static org.thingsboard.server.dao.model.ModelConstants.ADMIN_SETTINGS_JSON_VALUE_PROPERTY;
+import static org.thingsboard.server.dao.model.ModelConstants.ADMIN_SETTINGS_KEY_PROPERTY;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -54,16 +54,17 @@ public final class AdminSettingsEntity extends BaseSqlEntity<AdminSettings> impl
 
     public AdminSettingsEntity(AdminSettings adminSettings) {
         if (adminSettings.getId() != null) {
-            this.setId(adminSettings.getId().getId());
+            this.setUuid(adminSettings.getId().getId());
         }
+        this.setCreatedTime(adminSettings.getCreatedTime());
         this.key = adminSettings.getKey();
         this.jsonValue = adminSettings.getJsonValue();
     }
 
     @Override
     public AdminSettings toData() {
-        AdminSettings adminSettings = new AdminSettings(new AdminSettingsId(UUIDConverter.fromString(id)));
-        adminSettings.setCreatedTime(UUIDs.unixTimestamp(UUIDConverter.fromString(id)));
+        AdminSettings adminSettings = new AdminSettings(new AdminSettingsId(id));
+        adminSettings.setCreatedTime(createdTime);
         adminSettings.setKey(key);
         adminSettings.setJsonValue(jsonValue);
         return adminSettings;

@@ -1,5 +1,5 @@
 /**
- * Copyright © 2016-2017 The Thingsboard Authors
+ * Copyright © 2016-2020 The Thingsboard Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import org.thingsboard.server.common.data.id.TenantId;
 
 import java.util.*;
 
-public class DashboardInfo extends SearchTextBased<DashboardId> implements HasName {
+public class DashboardInfo extends SearchTextBased<DashboardId> implements HasName, HasTenantId {
 
     private TenantId tenantId;
     private String title;
@@ -98,6 +98,7 @@ public class DashboardInfo extends SearchTextBased<DashboardId> implements HasNa
     public boolean updateAssignedCustomer(Customer customer) {
         ShortCustomerInfo customerInfo = customer.toShortCustomerInfo();
         if (this.assignedCustomers != null && this.assignedCustomers.contains(customerInfo)) {
+            this.assignedCustomers.remove(customerInfo);
             this.assignedCustomers.add(customerInfo);
             return true;
         } else {
