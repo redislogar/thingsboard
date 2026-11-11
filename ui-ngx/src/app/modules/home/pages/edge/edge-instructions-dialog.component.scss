@@ -1,0 +1,148 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+@import "../../../../../scss/constants";
+
+:host {
+  height: 100%;
+  max-height: 100vh;
+  display: grid;
+  grid-template-rows: min-content minmax(auto, 1fr) min-content;
+
+  .tb-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    height: 300px;
+    max-height: 100%;
+
+    .label {
+      margin-bottom: 0;
+      text-align: center;
+    }
+  }
+
+  .tb-font-14 {
+    font-size: 14px;
+  }
+
+  .tb-flex-1 {
+    flex: 1;
+  }
+
+  @media #{$mat-sm} {
+    width: 705px;
+  }
+
+  @media #{$mat-gt-sm} {
+    width: 1080px;
+  }
+}
+
+:host-context(.mat-mdc-dialog-container) {
+  .tb-dialog-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+  }
+
+  .mat-mdc-dialog-content {
+    max-height: 80vh;
+    padding: 0 16px 16px 16px;
+    border-top: 16px solid #fff;
+  }
+}
+
+:host ::ng-deep {
+  .tb-markdown-view {
+    padding: 16px 16px 32px 16px;
+    div {
+      background-color: #F0F6F6;
+
+      &.code-wrapper button.clipboard-btn {
+        right: -2px !important;
+        p {
+          color: var(--tb-primary-500) !important;
+        }
+        p, div {
+          background-color: unset !important;
+        }
+        div {
+          img {
+            display: none;
+          }
+          &:after {
+            content: "";
+            position: initial;
+            display: block;
+            width: 18px;
+            height: 18px;
+            background: var(--tb-primary-500);
+            mask-image: url(/assets/copy-code-icon.svg);
+            -webkit-mask-image: url(/assets/copy-code-icon.svg);
+            mask-repeat: no-repeat;
+            -webkit-mask-repeat: no-repeat;
+          }
+        }
+        &.multiline {
+          right: -2px !important;
+        }
+      }
+    }
+    & > *:not(ul) {
+      padding-right: unset !important;
+      padding-left: unset !important;
+    }
+    pre[class*="language-"] {
+      border: 1px solid var(--tb-primary-500) !important;
+    }
+  }
+  .mdc-button__label > span {
+    .mat-icon {
+      vertical-align: text-bottom;
+      box-sizing: initial;
+    }
+  }
+
+  .mat-mdc-tab-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #fff;
+  }
+
+  .tabs-icon {
+    margin-right: 8px;
+  }
+
+  .tb-agent-tab-desc {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 16px 0 4px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--tb-primary-500) 6%, transparent);
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(0, 0, 0, 0.76);
+
+    > mat-icon {
+      flex-shrink: 0;
+      color: var(--tb-primary-500);
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  .tb-form-panel.tb-tab-body {
+    padding: 16px 0 0;
+  }
+
+  .mat-mdc-tab-body {
+    padding: 16px 0;
+  }
+}

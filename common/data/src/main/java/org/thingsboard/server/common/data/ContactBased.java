@@ -1,37 +1,40 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-License-Identifier: Apache-2.0
 package org.thingsboard.server.common.data;
 
 import lombok.EqualsAndHashCode;
 import org.thingsboard.server.common.data.id.UUIDBased;
+import org.thingsboard.server.common.data.validation.Length;
+import org.thingsboard.server.common.data.validation.NoXss;
 
 @EqualsAndHashCode(callSuper = true)
-public abstract class ContactBased<I extends UUIDBased> extends SearchTextBasedWithAdditionalInfo<I> {
-    
+public abstract class ContactBased<I extends UUIDBased> extends BaseDataWithAdditionalInfo<I> implements HasEmail {
+
     private static final long serialVersionUID = 5047448057830660988L;
-    
+
+    @Length(fieldName = "country")
+    @NoXss
     protected String country;
+    @Length(fieldName = "state")
+    @NoXss
     protected String state;
+    @Length(fieldName = "city")
+    @NoXss
     protected String city;
+    @NoXss
     protected String address;
+    @NoXss
     protected String address2;
+    @Length(fieldName = "zip or postal code")
+    @NoXss
     protected String zip;
+    @Length(fieldName = "phone")
+    @NoXss
     protected String phone;
+    @Length(fieldName = "email")
+    @NoXss
     protected String email;
-    
+
     public ContactBased() {
         super();
     }
@@ -39,7 +42,7 @@ public abstract class ContactBased<I extends UUIDBased> extends SearchTextBasedW
     public ContactBased(I id) {
         super(id);
     }
-    
+
     public ContactBased(ContactBased<I> contact) {
         super(contact);
         this.country = contact.getCountry();

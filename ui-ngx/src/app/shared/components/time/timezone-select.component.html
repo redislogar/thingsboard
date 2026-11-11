@@ -1,0 +1,50 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field [formGroup]="selectTimezoneFormGroup" class="mat-block flex flex-1"
+                [subscriptSizing]="subscriptSizing" [appearance]="appearance">
+  @if (displayLabel) {
+    <mat-label translate>timezone.timezone</mat-label>
+  }
+  <input matInput type="text" placeholder="{{ 'timezone.select-timezone' | translate }}"
+         #timezoneInput
+         formControlName="timezone"
+         (focusin)="onFocus()"
+         [required]="required"
+         [matAutocomplete]="timezoneAutocomplete">
+  @if (selectTimezoneFormGroup.get('timezone').value && !disabled) {
+    <button
+      type="button" style="margin-right: 1px"
+      matSuffix mat-icon-button aria-label="Clear"
+      (mousedown)="ignoreClosePanel = true"
+      (click)="clear()">
+      <mat-icon class="material-icons">close</mat-icon>
+    </button>
+  }
+  <mat-autocomplete class="tb-autocomplete"
+                    #timezoneAutocomplete="matAutocomplete"
+                    (closed)="onPanelClosed()"
+                    (optionSelected)="ignoreClosePanel = true"
+                    [displayWith]="displayTimezoneFn">
+    @for (timezone of filteredTimezones | async; track timezone) {
+      <mat-option [value]="timezone">
+        <span [innerHTML]="displayTimezoneFn(timezone) | highlight:searchText"></span>
+      </mat-option>
+    }
+    @if (!(filteredTimezones | async)?.length) {
+      <mat-option [value]="null">
+        <span>
+          {{ translate.get('timezone.no-timezones-matching', {timezone: searchText}) | async }}
+        </span>
+      </mat-option>
+    }
+  </mat-autocomplete>
+  @if (selectTimezoneFormGroup.get('timezone').hasError('required')) {
+    <mat-error>
+      {{ 'timezone.timezone-required' | translate }}
+    </mat-error>
+  }
+</mat-form-field>

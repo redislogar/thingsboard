@@ -1,0 +1,23 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+@if (hasEditableFilters) {
+  <section class="tb-filters-edit flex flex-row items-center justify-start">
+    <button mat-icon-button
+            cdkOverlayOrigin #filtersEditPanelOrigin="cdkOverlayOrigin"
+            (click)="openEditMode()"
+            matTooltip="{{ 'filter.filters' | translate }}"
+            [matTooltipPosition]="tooltipPosition">
+      <mat-icon>filter_list</mat-icon>
+    </button>
+    <span class="lt-lg:!hidden"
+          (click)="openEditMode()"
+          matTooltip="{{ 'filter.filters' | translate }}"
+          [matTooltipPosition]="tooltipPosition">
+      {{ 'filter.filters' | translate }}
+    </span>
+  </section>
+}

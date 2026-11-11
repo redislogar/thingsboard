@@ -1,0 +1,25 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<div class="tb-absolute-fill flex" [class]="legendContainerLayoutType">
+  @if (displayLegend && isLegendFirst) {
+    <tb-legend
+      [style]="legendStyle"
+      [legendConfig]="legendConfig"
+      [legendData]="legendData"
+      (legendKeyHiddenChange)="onLegendKeyHiddenChange($event)">
+    </tb-legend>
+  }
+  <div class="flex-1" #flotElement></div>
+  @if (displayLegend && !isLegendFirst) {
+    <tb-legend
+      [style]="legendStyle"
+      [legendConfig]="legendConfig"
+      [legendData]="legendData"
+      (legendKeyHiddenChange)="onLegendKeyHiddenChange($event)">
+    </tb-legend>
+  }
+</div>

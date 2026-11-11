@@ -1,0 +1,39 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+@import "constants";
+
+:host {
+ .mat-mdc-card.settings-card {
+   margin: 8px;
+
+   @media #{$mat-gt-sm} {
+     width: 700px;
+     margin: 8px auto;
+   }
+
+   mat-card-header.mat-mdc-card-header {
+     align-items: center;
+   }
+
+   .fields-group {
+     padding: 0 16px 8px;
+     margin: 10px 0;
+     border: 1px groove rgba(0, 0, 0, .25);
+     border-radius: 4px;
+
+     legend {
+       color: rgba(0, 0, 0, .7);
+     }
+   }
+
+   ::ng-deep {
+     button {
+       &.mat-mdc-outlined-button:not(:disabled) {
+         --mat-button-outlined-outline-color: inherit;
+         border-color: inherit;
+       }
+     }
+   }
+  }
+}

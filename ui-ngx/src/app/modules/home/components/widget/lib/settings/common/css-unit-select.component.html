@@ -1,0 +1,17 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field appearance="outline" subscriptSizing="dynamic" [style.width]="width">
+  <mat-select [formControl]="cssUnitFormControl" placeholder="{{ 'widget-config.set' | translate }}">
+    @if (allowEmpty) {
+      <mat-option [value]="null">
+      </mat-option>
+    }
+    @for (cssUnit of cssUnitsList; track cssUnit) {
+      <mat-option [value]="cssUnit">{{ cssUnit }}</mat-option>
+    }
+  </mat-select>
+</mat-form-field>

@@ -1,40 +1,39 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-License-Identifier: Apache-2.0
 package org.thingsboard.server.dao.sql.device;
 
-import com.datastax.driver.core.utils.UUIDs;
+import com.datastax.oss.driver.api.core.uuid.Uuids;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.thingsboard.common.util.ThingsBoardThreadFactory;
 import org.thingsboard.server.common.data.Device;
+import org.thingsboard.server.common.data.DeviceProfile;
+import org.thingsboard.server.common.data.DeviceProfileType;
+import org.thingsboard.server.common.data.DeviceTransportType;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.TenantId;
-import org.thingsboard.server.common.data.page.TextPageLink;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.dao.AbstractJpaDaoTest;
 import org.thingsboard.server.dao.device.DeviceDao;
+import org.thingsboard.server.dao.device.DeviceProfileDao;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
@@ -43,107 +42,160 @@ import static org.junit.Assert.assertNotNull;
  */
 public class JpaDeviceDaoTest extends AbstractJpaDaoTest {
 
+    public static final int COUNT_DEVICES = 40;
+    public static final String PREFIX_FOR_DEVICE_NAME = "SEARCH_TEXT_";
+    List<UUID> deviceIds;
+    UUID tenantId1;
+    UUID tenantId2;
+    UUID customerId1;
+    UUID customerId2;
     @Autowired
     private DeviceDao deviceDao;
 
-    @Test
-    public void testFindDevicesByTenantId() {
-        UUID tenantId1 = UUIDs.timeBased();
-        UUID tenantId2 = UUIDs.timeBased();
-        UUID customerId1 = UUIDs.timeBased();
-        UUID customerId2 = UUIDs.timeBased();
-        createDevices(tenantId1, tenantId2, customerId1, customerId2, 40);
+    @Autowired
+    private DeviceProfileDao deviceProfileDao;
 
-        TextPageLink pageLink1 = new TextPageLink(15, "SEARCH_TEXT");
-        List<Device> devices1 = deviceDao.findDevicesByTenantId(tenantId1, pageLink1);
-        assertEquals(15, devices1.size());
+    private DeviceProfile savedDeviceProfile;
 
-        TextPageLink pageLink2 = new TextPageLink(15, "SEARCH_TEXT",  devices1.get(14).getId().getId(), null);
-        List<Device> devices2 = deviceDao.findDevicesByTenantId(tenantId1, pageLink2);
-        assertEquals(5, devices2.size());
+    ListeningExecutorService executor;
+
+    @Before
+    public void setUp() {
+        createDeviceProfile();
+
+        tenantId1 = Uuids.timeBased();
+        customerId1 = Uuids.timeBased();
+        tenantId2 = Uuids.timeBased();
+        customerId2 = Uuids.timeBased();
+
+        deviceIds = createDevices(tenantId1, tenantId2, customerId1, customerId2, COUNT_DEVICES);
+    }
+
+    private void createDeviceProfile() {
+        DeviceProfile deviceProfile = new DeviceProfile();
+        deviceProfile.setName("TEST");
+        deviceProfile.setTenantId(TenantId.SYS_TENANT_ID);
+        deviceProfile.setType(DeviceProfileType.DEFAULT);
+        deviceProfile.setTransportType(DeviceTransportType.DEFAULT);
+        deviceProfile.setDescription("Test");
+        savedDeviceProfile = deviceProfileDao.save(TenantId.SYS_TENANT_ID, deviceProfile);
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        deviceDao.removeAllByIds(deviceIds);
+        deviceProfileDao.removeById(TenantId.SYS_TENANT_ID, savedDeviceProfile.getUuidId());
+        if (executor != null) {
+            executor.shutdownNow();
+        }
     }
 
     @Test
-    public void testFindAsync() throws ExecutionException, InterruptedException {
-        UUID tenantId = UUIDs.timeBased();
-        UUID customerId = UUIDs.timeBased();
-        Device device = getDevice(tenantId, customerId);
-        deviceDao.save(device);
+    public void testSaveDeviceName0x00_thenSomeDatabaseException() {
+        Device device = getDevice(tenantId1, customerId1, "\u0000");
+        assertThatThrownBy(() -> deviceIds.add(saveDevice(tenantId1, device).getUuidId()));
+    }
+
+    @Test
+    public void testSaveDevice_versionIncrement() {
+        Device device = getDevice(tenantId1, customerId1, "1ewfewf2");
+        device = saveDevice(tenantId1, device);
+        deviceIds.add(device.getUuidId());
+        assertThat(device.getVersion()).isEqualTo(1);
+
+        device.setName(device.getName() + "x");
+        device = saveDevice(tenantId1, device);
+        assertThat(device.getVersion()).isEqualTo(2);
+
+        device.setName(device.getName() + "x");
+        device = saveDevice(tenantId1, device);
+        assertThat(device.getVersion()).isEqualTo(3);
+    }
+
+    @Test
+    public void testSaveDevice_versionIncrement_noChanges() {
+        Device device = getDevice(tenantId1, customerId1, "1ewfewf2");
+        device = saveDevice(tenantId1, device);
+        deviceIds.add(device.getUuidId());
+        assertThat(device.getVersion()).isEqualTo(1);
+
+        device = saveDevice(tenantId1, device);
+        assertThat(device.getVersion()).isEqualTo(2);
+
+        device = saveDevice(tenantId1, device);
+        assertThat(device.getVersion()).isEqualTo(3);
+    }
+
+    @Test
+    public void testFindDevicesByTenantId() {
+        PageLink pageLink = new PageLink(15, 0, PREFIX_FOR_DEVICE_NAME);
+        PageData<Device> devices1 = deviceDao.findDevicesByTenantId(tenantId1, pageLink);
+        assertEquals(15, devices1.getData().size());
+
+        pageLink = pageLink.nextPageLink();
+
+        PageData<Device> devices2 = deviceDao.findDevicesByTenantId(tenantId1, pageLink);
+        assertEquals(5, devices2.getData().size());
+    }
+
+    @Test
+    public void testFindAsync() throws ExecutionException, InterruptedException, TimeoutException {
+        UUID tenantId = Uuids.timeBased();
+        UUID customerId = Uuids.timeBased();
+        // send to method getDevice() number = 40, because make random name is bad and name "SEARCH_TEXT_40" don't used
+        Device device = getDevice(tenantId, customerId, 40);
+        deviceIds.add(saveDevice(tenantId, device).getUuidId());
 
         UUID uuid = device.getId().getId();
-        Device entity = deviceDao.findById(uuid);
+        Device entity = deviceDao.findById(TenantId.fromUUID(tenantId), uuid);
         assertNotNull(entity);
         assertEquals(uuid, entity.getId().getId());
 
-        ListeningExecutorService service = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(10));
-        ListenableFuture<Device> future = service.submit(() -> deviceDao.findById(uuid));
-        Device asyncDevice = future.get();
+        executor = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(10, ThingsBoardThreadFactory.forName(getClass().getSimpleName() + "-test-scope")));
+        ListenableFuture<Device> future = executor.submit(() -> deviceDao.findById(TenantId.fromUUID(tenantId), uuid));
+        Device asyncDevice = future.get(30, TimeUnit.SECONDS);
         assertNotNull("Async device expected to be not null", asyncDevice);
     }
 
     @Test
-    public void testFindDevicesByTenantIdAndIdsAsync() throws ExecutionException, InterruptedException {
-        UUID tenantId1 = UUIDs.timeBased();
-        UUID customerId1 = UUIDs.timeBased();
-        UUID tenantId2 = UUIDs.timeBased();
-        UUID customerId2 = UUIDs.timeBased();
-
-        List<UUID> deviceIds = new ArrayList<>();
-
-        for(int i = 0; i < 5; i++) {
-            UUID deviceId1 = UUIDs.timeBased();
-            UUID deviceId2 = UUIDs.timeBased();
-            deviceDao.save(getDevice(tenantId1, customerId1, deviceId1));
-            deviceDao.save(getDevice(tenantId2, customerId2, deviceId2));
-            deviceIds.add(deviceId1);
-            deviceIds.add(deviceId2);
-        }
-
+    public void testFindDevicesByTenantIdAndIdsAsync() throws ExecutionException, InterruptedException, TimeoutException {
         ListenableFuture<List<Device>> devicesFuture = deviceDao.findDevicesByTenantIdAndIdsAsync(tenantId1, deviceIds);
-        List<Device> devices = devicesFuture.get();
-        assertEquals(5, devices.size());
-    }
-
-    @Test
-    public void testFindDevicesByTenantIdAndCustomerIdAndIdsAsync() throws ExecutionException, InterruptedException {
-        UUID tenantId1 = UUIDs.timeBased();
-        UUID customerId1 = UUIDs.timeBased();
-        UUID tenantId2 = UUIDs.timeBased();
-        UUID customerId2 = UUIDs.timeBased();
-
-        List<UUID> deviceIds = new ArrayList<>();
-
-        for(int i = 0; i < 20; i++) {
-            UUID deviceId1 = UUIDs.timeBased();
-            UUID deviceId2 = UUIDs.timeBased();
-            deviceDao.save(getDevice(tenantId1, customerId1, deviceId1));
-            deviceDao.save(getDevice(tenantId2, customerId2, deviceId2));
-            deviceIds.add(deviceId1);
-            deviceIds.add(deviceId2);
-        }
-
-        ListenableFuture<List<Device>> devicesFuture = deviceDao.findDevicesByTenantIdCustomerIdAndIdsAsync(tenantId1, customerId1, deviceIds);
-        List<Device> devices = devicesFuture.get();
+        List<Device> devices = devicesFuture.get(30, TimeUnit.SECONDS);
         assertEquals(20, devices.size());
     }
 
-    private void createDevices(UUID tenantId1, UUID tenantId2, UUID customerId1, UUID customerId2, int count) {
+    @Test
+    public void testFindDevicesByTenantIdAndCustomerIdAndIdsAsync() throws ExecutionException, InterruptedException, TimeoutException {
+        ListenableFuture<List<Device>> devicesFuture = deviceDao.findDevicesByTenantIdCustomerIdAndIdsAsync(tenantId1, customerId1, deviceIds);
+        List<Device> devices = devicesFuture.get(30, TimeUnit.SECONDS);
+        assertEquals(20, devices.size());
+    }
+
+    private List<UUID> createDevices(UUID tenantId1, UUID tenantId2, UUID customerId1, UUID customerId2, int count) {
+        List<UUID> savedDevicesUUID = new ArrayList<>();
         for (int i = 0; i < count / 2; i++) {
-            deviceDao.save(getDevice(tenantId1, customerId1));
-            deviceDao.save(getDevice(tenantId2, customerId2));
+            savedDevicesUUID.add(saveDevice(tenantId1, getDevice(tenantId1, customerId1, i)).getUuidId());
+            savedDevicesUUID.add(saveDevice(tenantId2, getDevice(tenantId2, customerId2, i + count / 2)).getUuidId());
         }
+        return savedDevicesUUID;
     }
 
-    private Device getDevice(UUID tenantId, UUID customerID) {
-        return getDevice(tenantId, customerID, UUIDs.timeBased());
+    private Device getDevice(UUID tenantId, UUID customerID, Object nameSuffix) {
+        return getDevice(tenantId, customerID, Uuids.timeBased(), nameSuffix);
     }
 
-    private Device getDevice(UUID tenantId, UUID customerID, UUID deviceId) {
+    private Device getDevice(UUID tenantId, UUID customerID, UUID deviceId, Object nameSuffix) {
         Device device = new Device();
         device.setId(new DeviceId(deviceId));
-        device.setTenantId(new TenantId(tenantId));
+        device.setTenantId(TenantId.fromUUID(tenantId));
         device.setCustomerId(new CustomerId(customerID));
-        device.setName("SEARCH_TEXT");
+        device.setName(PREFIX_FOR_DEVICE_NAME + nameSuffix);
+        device.setDeviceProfileId(savedDeviceProfile.getId());
         return device;
     }
+
+    private Device saveDevice(UUID tenantId, Device device) {
+        return deviceDao.save(TenantId.fromUUID(tenantId), device);
+    }
+
 }

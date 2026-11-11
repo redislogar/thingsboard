@@ -1,0 +1,37 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+@mixin rule-node-colors {
+  &.tb-filter-type {
+    background-color: #f1e861;
+  }
+
+  &.tb-enrichment-type {
+    background-color: #cdf14e;
+  }
+
+  &.tb-transformation-type {
+    background-color: #79cef1;
+  }
+
+  &.tb-action-type {
+    background-color: #f1928f;
+  }
+
+  &.tb-analytics-type {
+    background-color: #31d2cc;
+  }
+
+  &.tb-external-type {
+    background-color: #fbc766;
+  }
+
+  &.tb-flow-type {
+    background-color: #d6c4f1;
+  }
+
+  &.tb-unknown-type {
+    background-color: #f16c29;
+  }
+
+}

@@ -1,0 +1,98 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+package org.thingsboard.server.transport.mqtt.mqttv3.claim;
+
+import lombok.extern.slf4j.Slf4j;
+import org.junit.Before;
+import org.junit.Test;
+import org.thingsboard.server.common.data.TransportPayloadType;
+import org.thingsboard.server.dao.service.DaoSqlTest;
+import org.thingsboard.server.gen.transport.TransportApiProtos;
+import org.thingsboard.server.transport.mqtt.MqttTestConfigProperties;
+import org.thingsboard.server.transport.mqtt.mqttv3.MqttTestClient;
+
+import static org.thingsboard.server.common.data.device.profile.MqttTopics.DEVICE_CLAIM_SHORT_JSON_TOPIC;
+import static org.thingsboard.server.common.data.device.profile.MqttTopics.DEVICE_CLAIM_SHORT_PROTO_TOPIC;
+
+@Slf4j
+@DaoSqlTest
+public class MqttClaimProtoDeviceTest extends MqttClaimDeviceTest {
+
+    @Before
+    public void beforeTest() throws Exception {
+        MqttTestConfigProperties configProperties = MqttTestConfigProperties.builder()
+                .deviceName("Test Claim device")
+                .gatewayName("Test Claim gateway")
+                .transportPayloadType(TransportPayloadType.PROTOBUF)
+                .build();
+        processBeforeTest(configProperties);
+    }
+
+    @Test
+    public void testClaimingDevice() throws Exception {
+        processTestClaimingDevice(false);
+    }
+
+    @Test
+    public void testClaimingDeviceWithoutSecretAndDuration() throws Exception {
+        processTestClaimingDevice(true);
+    }
+
+    @Test
+    public void testClaimingDeviceOnShortProtoTopic() throws Exception {
+        processTestClaimingDevice(false, DEVICE_CLAIM_SHORT_PROTO_TOPIC);
+    }
+
+    @Test
+    public void testClaimingDeviceOnShortProtoTopicWithoutSecretAndDuration() throws Exception {
+        processTestClaimingDevice(true, DEVICE_CLAIM_SHORT_PROTO_TOPIC);
+    }
+
+    @Test
+    public void testClaimingDeviceOnShortJsonTopic() throws Exception {
+        super.processTestClaimingDevice(false, DEVICE_CLAIM_SHORT_JSON_TOPIC);
+    }
+
+    @Test
+    public void testGatewayClaimingDevice() throws Exception {
+        processTestGatewayClaimingDevice("Test claiming gateway device Proto", false);
+    }
+
+    @Test
+    public void testGatewayClaimingDeviceWithoutSecretAndDuration() throws Exception {
+        processTestGatewayClaimingDevice("Test claiming gateway device empty payload Proto", true);
+    }
+
+    @Override
+    protected void processTestClaimingDevice(boolean emptyPayload, String claimTopic) throws Exception {
+        MqttTestClient client = new MqttTestClient();
+        client.connectAndWait(accessToken);
+        byte[] payloadBytes;
+        if (emptyPayload) {
+            payloadBytes = getClaimDevice(0, emptyPayload).toByteArray();
+        } else {
+            payloadBytes = getClaimDevice(60000, emptyPayload).toByteArray();
+        }
+        byte[] failurePayloadBytes = getClaimDevice(1, emptyPayload).toByteArray();
+        validateClaimResponse(emptyPayload, client, payloadBytes, failurePayloadBytes, claimTopic);
+    }
+
+    protected void processTestGatewayClaimingDevice(String deviceName, boolean emptyPayload) throws Exception {
+        processProtoTestGatewayClaimDevice(deviceName, emptyPayload);
+    }
+
+    private TransportApiProtos.ClaimDevice getClaimDevice(long duration, boolean emptyPayload) {
+        TransportApiProtos.ClaimDevice.Builder claimDeviceBuilder = TransportApiProtos.ClaimDevice.newBuilder();
+        if (!emptyPayload) {
+            claimDeviceBuilder.setSecretKey("value");
+        }
+        if (duration > 0) {
+            claimDeviceBuilder.setSecretKey("value");
+            claimDeviceBuilder.setDurationMs(duration);
+        }
+        return claimDeviceBuilder.build();
+    }
+
+
+}

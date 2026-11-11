@@ -1,0 +1,37 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field [formGroup]="selectDashboardStateFormGroup" class="mat-block" [appearance]="appearance">
+  <mat-label>{{ label }}</mat-label>
+  <input matInput type="text" placeholder="{{ placeholder }}"
+         #dashboardStateInput
+         formControlName="dashboardStateId"
+         [required]="required"
+         (focus)="onFocus()"
+         [matAutocomplete]="dashboardStateAutocomplete">
+  @if (selectDashboardStateFormGroup.get('dashboardStateId').value) {
+    <button
+      type="button"
+      matSuffix mat-icon-button aria-label="Clear"
+      (click)="clear()">
+      <mat-icon class="material-icons">close</mat-icon>
+    </button>
+  }
+  <mat-autocomplete
+    class="tb-autocomplete"
+    #dashboardStateAutocomplete="matAutocomplete">
+    @for (state of filteredStatesDashboard$ | async; track state) {
+      <mat-option [value]="state">
+        <span [innerHTML]="state | highlight:searchText"></span>
+      </mat-option>
+    }
+  </mat-autocomplete>
+  @if (selectDashboardStateFormGroup.get('dashboardStateId').hasError('required')) {
+    <mat-error>
+      {{ 'widget-action.target-dashboard-state-required' | translate }}
+    </mat-error>
+  }
+</mat-form-field>

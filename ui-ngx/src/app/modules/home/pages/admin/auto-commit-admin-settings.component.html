@@ -1,0 +1,13 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+@if (!(hasRepository$ | async)) {
+  <tb-repository-settings #repositorySettingsComponent
+                          >
+  </tb-repository-settings>
+} @else {
+  <tb-auto-commit-settings #autoCommitSettingsComponent></tb-auto-commit-settings>
+}

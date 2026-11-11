@@ -1,0 +1,61 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field [formGroup]="entityTypeListFormGroup"
+                [appearance]="appearance"
+                class="mat-block" [class]="additionalClasses"
+                [floatLabel]="floatLabel"
+                subscriptSizing="{{ subscriptSizing }}">
+  @if (label) {
+    <mat-label> {{ label }}</mat-label>
+  }
+  <mat-chip-grid #chipList formControlName="entityTypeList">
+    @for (entityType of entityTypeList; track entityType) {
+      <mat-chip-row
+        [removable]="!disabled"
+        (removed)="remove(entityType)">
+        {{entityType.name}}
+        @if (!disabled) {
+          <mat-icon matChipRemove>close</mat-icon>
+        }
+      </mat-chip-row>
+    }
+    <input matInput type="text" placeholder="{{ !disabled ? ((!entityTypeList || !entityTypeList.length) ? placeholder : secondaryPlaceholder) : '' }}"
+           style="max-width: 200px;"
+           #entityTypeInput
+           (focusin)="onFocus()"
+           formControlName="entityType"
+           matAutocompleteOrigin
+           #origin="matAutocompleteOrigin"
+           [matAutocompleteConnectedTo]="origin"
+           [matAutocomplete]="entityTypeAutocomplete"
+           [matChipInputFor]="chipList">
+  </mat-chip-grid>
+  <mat-autocomplete #entityTypeAutocomplete="matAutocomplete"
+                    class="tb-autocomplete"
+                    [displayWith]="displayEntityTypeFn">
+    @for (entityType of filteredEntityTypeList | async; track entityType) {
+      <mat-option [value]="entityType">
+        <span [innerHTML]="entityType.name | highlight:searchText"></span>
+      </mat-option>
+    }
+    @if (!(filteredEntityTypeList | async)?.length) {
+      <mat-option [value]="null">
+        <span>
+          {{ translate.get('entity.no-entity-types-matching', {entityType: searchText}) | async }}
+        </span>
+      </mat-option>
+    }
+  </mat-autocomplete>
+  <div matSuffix>
+    <ng-content select="[matSuffix]"></ng-content>
+  </div>
+  @if (entityTypeListFormGroup.get('entityTypeList').hasError('required')) {
+    <mat-error>
+      {{ 'entity.entity-type-list-required' | translate }}
+    </mat-error>
+  }
+</mat-form-field>

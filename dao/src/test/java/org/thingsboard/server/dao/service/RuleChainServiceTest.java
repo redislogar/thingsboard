@@ -1,0 +1,901 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+package org.thingsboard.server.dao.service;
+
+import com.datastax.oss.driver.api.core.uuid.Uuids;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.junit.Assert;
+import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.thingsboard.common.util.JacksonUtil;
+import org.thingsboard.server.common.data.DeviceProfile;
+import org.thingsboard.server.common.data.StringUtils;
+import org.thingsboard.server.common.data.asset.AssetProfile;
+import org.thingsboard.server.common.data.edge.Edge;
+import org.thingsboard.server.common.data.id.EntityId;
+import org.thingsboard.server.common.data.id.RuleChainId;
+import org.thingsboard.server.common.data.id.RuleNodeId;
+import org.thingsboard.server.common.data.id.TenantId;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
+import org.thingsboard.server.common.data.relation.EntityRelation;
+import org.thingsboard.server.common.data.relation.RelationTypeGroup;
+import org.thingsboard.server.common.data.rule.RuleChain;
+import org.thingsboard.server.common.data.rule.RuleChainMetaData;
+import org.thingsboard.server.common.data.rule.RuleChainType;
+import org.thingsboard.server.common.data.rule.RuleNode;
+import org.thingsboard.server.dao.asset.AssetProfileService;
+import org.thingsboard.server.dao.device.DeviceProfileService;
+import org.thingsboard.server.dao.edge.EdgeService;
+import org.thingsboard.server.dao.exception.IncorrectParameterException;
+import org.thingsboard.server.dao.relation.RelationService;
+import org.thingsboard.server.dao.relation.RelationWriteLock;
+import org.thingsboard.server.dao.rule.RuleChainService;
+import org.thingsboard.server.dao.secret.SecretConfigurationService;
+import org.thingsboard.server.exception.DataValidationException;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.verify;
+import static org.thingsboard.server.common.data.relation.EntityRelation.USES_TYPE;
+import static org.thingsboard.server.dao.rule.BaseRuleChainService.TB_RULE_CHAIN_INPUT_NODE;
+
+/**
+ * Created by igor on 3/13/18.
+ */
+@DaoSqlTest
+public class RuleChainServiceTest extends AbstractServiceTest {
+
+    @Autowired
+    EdgeService edgeService;
+    @Autowired
+    RuleChainService ruleChainService;
+    @Autowired
+    RelationService relationService;
+    @Autowired
+    DeviceProfileService deviceProfileService;
+    @Autowired
+    AssetProfileService assetProfileService;
+
+    @MockitoBean
+    SecretConfigurationService secretConfigurationService;
+
+    @MockitoSpyBean
+    RelationWriteLock relationWriteLock;
+
+    private IdComparator<RuleChain> idComparator = new IdComparator<>();
+    private IdComparator<RuleNode> ruleNodeIdComparator = new IdComparator<>();
+
+    @Test
+    public void testSaveRuleChain() throws IOException {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setTenantId(tenantId);
+        ruleChain.setName("My RuleChain");
+
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+        Assert.assertNotNull(savedRuleChain);
+        Assert.assertNotNull(savedRuleChain.getId());
+        Assert.assertTrue(savedRuleChain.getCreatedTime() > 0);
+        Assert.assertEquals(ruleChain.getTenantId(), savedRuleChain.getTenantId());
+        Assert.assertEquals(ruleChain.getName(), savedRuleChain.getName());
+
+        savedRuleChain.setName("My new RuleChain");
+
+        ruleChainService.saveRuleChain(savedRuleChain);
+        RuleChain foundRuleChain = ruleChainService.findRuleChainById(tenantId, savedRuleChain.getId());
+        Assert.assertEquals(foundRuleChain.getName(), savedRuleChain.getName());
+
+        ruleChainService.deleteRuleChainById(tenantId, savedRuleChain.getId());
+    }
+
+    @Test
+    public void testSaveRuleChainWithEmptyName() {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setTenantId(tenantId);
+        Assertions.assertThrows(DataValidationException.class, () -> {
+            ruleChainService.saveRuleChain(ruleChain);
+        });
+    }
+
+    @Test
+    public void testSaveRuleChainWithInvalidTenant() {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setName("My RuleChain");
+        ruleChain.setTenantId(TenantId.fromUUID(Uuids.timeBased()));
+        Assertions.assertThrows(DataValidationException.class, () -> {
+            ruleChainService.saveRuleChain(ruleChain);
+        });
+    }
+
+    @Test
+    public void testFindRuleChainById() {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setTenantId(tenantId);
+        ruleChain.setName("My RuleChain");
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+        RuleChain foundRuleChain = ruleChainService.findRuleChainById(tenantId, savedRuleChain.getId());
+        Assert.assertNotNull(foundRuleChain);
+        Assert.assertEquals(savedRuleChain, foundRuleChain);
+        ruleChainService.deleteRuleChainById(tenantId, savedRuleChain.getId());
+    }
+
+    @Test
+    public void testDeleteRuleChain() {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setTenantId(tenantId);
+        ruleChain.setName("My RuleChain");
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+        RuleChain foundRuleChain = ruleChainService.findRuleChainById(tenantId, savedRuleChain.getId());
+        Assert.assertNotNull(foundRuleChain);
+        ruleChainService.deleteRuleChainById(tenantId, savedRuleChain.getId());
+        foundRuleChain = ruleChainService.findRuleChainById(tenantId, savedRuleChain.getId());
+        Assert.assertNull(foundRuleChain);
+    }
+
+    @Test
+    public void testDeleteRuleChainReferencedAsDeviceProfileDefault() {
+        // Pins the fk_default_rule_chain_device_profile constraint-violation translation to the friendly message.
+        // The Citus rerun (CitusRuleChainServiceTest) additionally exercises the shard-suffixed constraint name
+        // arriving from a worker, which DaoUtil.constraintNameMatches must still recognize.
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setTenantId(tenantId);
+        ruleChain.setName("Device profile default rule chain");
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+
+        DeviceProfile deviceProfile = createDeviceProfile(tenantId, "Device profile referencing rule chain");
+        deviceProfile.setDefaultRuleChainId(savedRuleChain.getId());
+        deviceProfileService.saveDeviceProfile(deviceProfile);
+
+        assertThatThrownBy(() -> ruleChainService.deleteRuleChainById(tenantId, savedRuleChain.getId()))
+                .isInstanceOf(DataValidationException.class)
+                .hasMessage("The rule chain referenced by the device profiles cannot be deleted!");
+    }
+
+    @Test
+    public void testDeleteRuleChainReferencedAsAssetProfileDefault() {
+        // Same as the device-profile case above, for fk_default_rule_chain_asset_profile.
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setTenantId(tenantId);
+        ruleChain.setName("Asset profile default rule chain");
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+
+        AssetProfile assetProfile = createAssetProfile(tenantId, "Asset profile referencing rule chain");
+        assetProfile.setDefaultRuleChainId(savedRuleChain.getId());
+        assetProfileService.saveAssetProfile(assetProfile);
+
+        assertThatThrownBy(() -> ruleChainService.deleteRuleChainById(tenantId, savedRuleChain.getId()))
+                .isInstanceOf(DataValidationException.class)
+                .hasMessage("The rule chain referenced by the asset profiles cannot be deleted!");
+    }
+
+    @Test
+    public void testFindRuleChainsByTenantId() {
+        List<RuleChain> ruleChains = new ArrayList<>();
+        for (int i = 0; i < 165; i++) {
+            RuleChain ruleChain = new RuleChain();
+            ruleChain.setTenantId(tenantId);
+            ruleChain.setName("RuleChain" + i);
+            ruleChains.add(ruleChainService.saveRuleChain(ruleChain));
+        }
+
+        List<RuleChain> loadedRuleChains = new ArrayList<>();
+        PageLink pageLink = new PageLink(16);
+        PageData<RuleChain> pageData = null;
+        do {
+            pageData = ruleChainService.findTenantRuleChainsByType(tenantId, RuleChainType.CORE, pageLink);
+            loadedRuleChains.addAll(pageData.getData());
+            if (pageData.hasNext()) {
+                pageLink = pageLink.nextPageLink();
+            }
+        } while (pageData.hasNext());
+
+        Collections.sort(ruleChains, idComparator);
+        Collections.sort(loadedRuleChains, idComparator);
+
+        Assert.assertEquals(ruleChains, loadedRuleChains);
+
+        ruleChainService.deleteRuleChainsByTenantId(tenantId);
+
+        pageLink = new PageLink(31);
+        pageData = ruleChainService.findTenantRuleChainsByType(tenantId, RuleChainType.CORE, pageLink);
+        Assert.assertFalse(pageData.hasNext());
+        Assert.assertTrue(pageData.getData().isEmpty());
+    }
+
+    @Test
+    public void testFindRuleChainsByTenantIdAndName() {
+        String name1 = "RuleChain name 1";
+        List<RuleChain> ruleChainsName1 = new ArrayList<>();
+        for (int i = 0; i < 123; i++) {
+            RuleChain ruleChain = new RuleChain();
+            ruleChain.setTenantId(tenantId);
+            String suffix = StringUtils.randomAlphanumeric((int) (Math.random() * 17));
+            String name = name1 + suffix;
+            name = i % 2 == 0 ? name.toLowerCase() : name.toUpperCase();
+            ruleChain.setName(name);
+            ruleChainsName1.add(ruleChainService.saveRuleChain(ruleChain));
+        }
+        String name2 = "RuleChain name 2";
+        List<RuleChain> ruleChainsName2 = new ArrayList<>();
+        for (int i = 0; i < 193; i++) {
+            RuleChain ruleChain = new RuleChain();
+            ruleChain.setTenantId(tenantId);
+            String suffix = StringUtils.randomAlphanumeric((int) (Math.random() * 15));
+            String name = name2 + suffix;
+            name = i % 2 == 0 ? name.toLowerCase() : name.toUpperCase();
+            ruleChain.setName(name);
+            ruleChainsName2.add(ruleChainService.saveRuleChain(ruleChain));
+        }
+
+        List<RuleChain> loadedRuleChainsName1 = new ArrayList<>();
+        PageLink pageLink = new PageLink(19, 0, name1);
+        PageData<RuleChain> pageData = null;
+        do {
+            pageData = ruleChainService.findTenantRuleChainsByType(tenantId, RuleChainType.CORE, pageLink);
+            loadedRuleChainsName1.addAll(pageData.getData());
+            if (pageData.hasNext()) {
+                pageLink = pageLink.nextPageLink();
+            }
+        } while (pageData.hasNext());
+
+        Collections.sort(ruleChainsName1, idComparator);
+        Collections.sort(loadedRuleChainsName1, idComparator);
+
+        Assert.assertEquals(ruleChainsName1, loadedRuleChainsName1);
+
+        List<RuleChain> loadedRuleChainsName2 = new ArrayList<>();
+        pageLink = new PageLink(4, 0, name2);
+        do {
+            pageData = ruleChainService.findTenantRuleChainsByType(tenantId, RuleChainType.CORE, pageLink);
+            loadedRuleChainsName2.addAll(pageData.getData());
+            if (pageData.hasNext()) {
+                pageLink = pageLink.nextPageLink();
+            }
+        } while (pageData.hasNext());
+
+        Collections.sort(ruleChainsName2, idComparator);
+        Collections.sort(loadedRuleChainsName2, idComparator);
+
+        Assert.assertEquals(ruleChainsName2, loadedRuleChainsName2);
+
+        for (RuleChain ruleChain : loadedRuleChainsName1) {
+            ruleChainService.deleteRuleChainById(tenantId, ruleChain.getId());
+        }
+
+        pageLink = new PageLink(4, 0, name1);
+        pageData = ruleChainService.findTenantRuleChainsByType(tenantId, RuleChainType.CORE, pageLink);
+        Assert.assertFalse(pageData.hasNext());
+        Assert.assertEquals(0, pageData.getData().size());
+
+        for (RuleChain ruleChain : loadedRuleChainsName2) {
+            ruleChainService.deleteRuleChainById(tenantId, ruleChain.getId());
+        }
+
+        pageLink = new PageLink(4, 0, name2);
+        pageData = ruleChainService.findTenantRuleChainsByType(tenantId, RuleChainType.CORE, pageLink);
+        Assert.assertFalse(pageData.hasNext());
+        Assert.assertEquals(0, pageData.getData().size());
+    }
+
+    @Test
+    public void testSaveRuleChainMetaData() throws Exception {
+
+        RuleChainMetaData savedRuleChainMetaData = createRuleChainMetadata();
+
+        Assert.assertEquals(3, savedRuleChainMetaData.getNodes().size());
+        Assert.assertEquals(3, savedRuleChainMetaData.getConnections().size());
+
+        for (RuleNode ruleNode : savedRuleChainMetaData.getNodes()) {
+            Assert.assertNotNull(ruleNode.getId());
+            List<EntityRelation> relations = ruleChainService.getRuleNodeRelations(tenantId, ruleNode.getId());
+            if ("name1".equals(ruleNode.getName())) {
+                Assert.assertEquals(2, relations.size());
+            } else if ("name2".equals(ruleNode.getName())) {
+                Assert.assertEquals(1, relations.size());
+            } else if ("name3".equals(ruleNode.getName())) {
+                Assert.assertEquals(0, relations.size());
+            }
+        }
+
+        List<RuleNode> loadedRuleNodes = ruleChainService.getRuleChainNodes(tenantId, savedRuleChainMetaData.getRuleChainId());
+
+        Collections.sort(savedRuleChainMetaData.getNodes(), ruleNodeIdComparator);
+        Collections.sort(loadedRuleNodes, ruleNodeIdComparator);
+
+        Assert.assertEquals(savedRuleChainMetaData.getNodes(), loadedRuleNodes);
+
+        ruleChainService.deleteRuleChainById(tenantId, savedRuleChainMetaData.getRuleChainId());
+    }
+
+    @Test
+    public void testRuleChainGraphMutationsRunUnderCoveringLock() throws Exception {
+        // saveRuleChainMetaData (the value-returning Supplier overload) and rule-chain deletion (the Runnable overload,
+        // which delegates to the Supplier overload) must both wrap their relation mutations in a covering advisory lock
+        // scoped to the rule chain id. On plain PG the lock is a no-op, but the spy still records the calls.
+        // This pins the WIRING only (that the covering lock is invoked with the rule chain id). The behavioral guarantee
+        // it documents — covering lock acquired before the rule_chain row write, inner endpoint locks suppressed, no
+        // replica divergence — is exercised against a real cluster by CitusRelationWriteSerializationTest.
+        RuleChainMetaData savedRuleChainMetaData = createRuleChainMetadata();
+        RuleChainId ruleChainId = savedRuleChainMetaData.getRuleChainId();
+
+        // createRuleChainMetadata() called saveRuleChainMetaData once -> Supplier overload with this rule chain id.
+        verify(relationWriteLock, atLeastOnce()).withCoveringLock(eq(ruleChainId), any(Supplier.class));
+
+        ruleChainService.deleteRuleChainById(tenantId, ruleChainId);
+
+        // Deletion wraps deleteRuleNodes via the Runnable overload (scoped to the same rule chain id).
+        verify(relationWriteLock, atLeastOnce()).withCoveringLock(eq(ruleChainId), any(Runnable.class));
+    }
+
+    @Test
+    public void testUpdateRuleChainMetaData() throws Exception {
+        RuleChainMetaData savedRuleChainMetaData = createRuleChainMetadata();
+
+        List<RuleNode> ruleNodes = savedRuleChainMetaData.getNodes();
+        int name3Index = -1;
+        for (int i = 0; i < ruleNodes.size(); i++) {
+            if ("name3".equals(ruleNodes.get(i).getName())) {
+                name3Index = i;
+                break;
+            }
+        }
+
+        RuleNode ruleNode4 = new RuleNode();
+        ruleNode4.setName("name4");
+        ruleNode4.setType("type4");
+        ruleNode4.setConfiguration(JacksonUtil.toJsonNode("\"key4\": \"val4\""));
+
+        ruleNodes.set(name3Index, ruleNode4);
+
+        Assert.assertTrue(ruleChainService.saveRuleChainMetaData(tenantId, savedRuleChainMetaData, Function.identity()).isSuccess());
+        RuleChainMetaData updatedRuleChainMetaData = ruleChainService.loadRuleChainMetaData(tenantId, savedRuleChainMetaData.getRuleChainId());
+
+        Assert.assertEquals(3, updatedRuleChainMetaData.getNodes().size());
+        Assert.assertEquals(3, updatedRuleChainMetaData.getConnections().size());
+
+        for (RuleNode ruleNode : updatedRuleChainMetaData.getNodes()) {
+            Assert.assertNotNull(ruleNode.getId());
+            List<EntityRelation> relations = ruleChainService.getRuleNodeRelations(tenantId, ruleNode.getId());
+            if ("name1".equals(ruleNode.getName())) {
+                Assert.assertEquals(2, relations.size());
+            } else if ("name2".equals(ruleNode.getName())) {
+                Assert.assertEquals(1, relations.size());
+            } else if ("name4".equals(ruleNode.getName())) {
+                Assert.assertEquals(0, relations.size());
+            }
+        }
+
+        List<RuleNode> loadedRuleNodes = ruleChainService.getRuleChainNodes(tenantId, savedRuleChainMetaData.getRuleChainId());
+
+        Collections.sort(updatedRuleChainMetaData.getNodes(), ruleNodeIdComparator);
+        Collections.sort(loadedRuleNodes, ruleNodeIdComparator);
+
+        Assert.assertEquals(updatedRuleChainMetaData.getNodes(), loadedRuleNodes);
+
+        ruleChainService.deleteRuleChainById(tenantId, savedRuleChainMetaData.getRuleChainId());
+    }
+
+    @Test
+    public void testUpdateRuleChainMetaDataWithCirclingRelation() {
+        Assertions.assertThrows(DataValidationException.class, () -> {
+            ruleChainService.saveRuleChainMetaData(tenantId, createRuleChainMetadataWithCirclingRelation(), Function.identity());
+        });
+    }
+
+    @Test
+    public void testUpdateRuleChainMetaDataWithCirclingRelation2() {
+        Assertions.assertThrows(DataValidationException.class, () -> {
+            ruleChainService.saveRuleChainMetaData(tenantId, createRuleChainMetadataWithCirclingRelation2(), Function.identity());
+        });
+    }
+
+    @Test
+    public void testGetDefaultEdgeRuleChains() throws Exception {
+        RuleChainId ruleChainId = saveRuleChainAndSetAutoAssignToEdge("Default Edge Rule Chain 1");
+        saveRuleChainAndSetAutoAssignToEdge("Default Edge Rule Chain 2");
+        PageData<RuleChain> result = ruleChainService.findAutoAssignToEdgeRuleChainsByTenantId(tenantId, new PageLink(100));
+        Assert.assertEquals(2, result.getData().size());
+
+        ruleChainService.unsetAutoAssignToEdgeRuleChain(tenantId, ruleChainId);
+
+        result = ruleChainService.findAutoAssignToEdgeRuleChainsByTenantId(tenantId, new PageLink(100));
+        Assert.assertEquals(1, result.getData().size());
+    }
+
+    @Test
+    public void setEdgeTemplateRootRuleChain() throws Exception {
+        RuleChainId ruleChainId1 = saveRuleChainAndSetAutoAssignToEdge("Default Edge Rule Chain 1");
+        RuleChainId ruleChainId2 = saveRuleChainAndSetAutoAssignToEdge("Default Edge Rule Chain 2");
+
+        ruleChainService.setEdgeTemplateRootRuleChain(tenantId, ruleChainId1);
+        ruleChainService.setEdgeTemplateRootRuleChain(tenantId, ruleChainId2);
+
+        RuleChain ruleChainById = ruleChainService.findRuleChainById(tenantId, ruleChainId1);
+        Assert.assertFalse(ruleChainById.isRoot());
+
+        ruleChainById = ruleChainService.findRuleChainById(tenantId, ruleChainId2);
+        Assert.assertTrue(ruleChainById.isRoot());
+    }
+
+    @Test
+    public void testSaveRuleChainWithInputNode() {
+        RuleChain fromRuleChain = new RuleChain();
+        fromRuleChain.setName("From RuleChain");
+        fromRuleChain.setTenantId(tenantId);
+        fromRuleChain = ruleChainService.saveRuleChain(fromRuleChain);
+        RuleChainId fromRuleChainId = fromRuleChain.getId();
+
+        RuleChain toRuleChain1 = new RuleChain();
+        toRuleChain1.setName("To Rule Chain 1");
+        toRuleChain1.setTenantId(tenantId);
+        toRuleChain1 = ruleChainService.saveRuleChain(toRuleChain1);
+        RuleChainId toRuleChain1Id = toRuleChain1.getId();
+
+        RuleChainMetaData ruleChainMetaData = new RuleChainMetaData();
+        ruleChainMetaData.setRuleChainId(fromRuleChainId);
+
+        RuleNode toRuleChain1Node = new RuleNode();
+        toRuleChain1Node.setName("To Rule Chain 1");
+        toRuleChain1Node.setType(TB_RULE_CHAIN_INPUT_NODE);
+        toRuleChain1Node.setConfiguration(JacksonUtil.newObjectNode()
+                .put("ruleChainId", toRuleChain1Id.toString()));
+
+        RuleNode toRuleChain1Node2 = new RuleNode();
+        toRuleChain1Node2.setName("To Rule Chain 1");
+        toRuleChain1Node2.setType(TB_RULE_CHAIN_INPUT_NODE);
+        toRuleChain1Node2.setConfiguration(JacksonUtil.newObjectNode()
+                .put("ruleChainId", toRuleChain1Id.toString()));
+
+        List<RuleNode> ruleNodes = new ArrayList<>();
+        ruleNodes.add(toRuleChain1Node);
+        ruleNodes.add(toRuleChain1Node2);
+        ruleChainMetaData.setFirstNodeIndex(0);
+        ruleChainMetaData.setNodes(ruleNodes);
+
+        ruleChainService.saveRuleChainMetaData(tenantId, ruleChainMetaData, Function.identity());
+
+        List<EntityRelation> relations = relationService.findByFromAndType(tenantId, fromRuleChainId, USES_TYPE, RelationTypeGroup.COMMON);
+        assertThat(relations).singleElement().satisfies(relationToRuleChain1 -> {
+            assertThat(relationToRuleChain1.getFrom()).isEqualTo(fromRuleChainId);
+            assertThat(relationToRuleChain1.getTo()).isEqualTo(toRuleChain1Id);
+        });
+
+        RuleChain toRuleChain2 = new RuleChain();
+        toRuleChain2.setName("To Rule Chain 2");
+        toRuleChain2.setTenantId(tenantId);
+        toRuleChain2 = ruleChainService.saveRuleChain(toRuleChain2);
+        RuleChainId toRuleChain2Id = toRuleChain2.getId();
+
+        RuleNode toRuleChain2Node = new RuleNode();
+        toRuleChain2Node.setName("To Rule Chain 2");
+        toRuleChain2Node.setType(TB_RULE_CHAIN_INPUT_NODE);
+        toRuleChain2Node.setConfiguration(JacksonUtil.newObjectNode()
+                .put("ruleChainId", toRuleChain2Id.toString()));
+
+        List<RuleNode> newRuleNodes = new ArrayList<>();
+        newRuleNodes.add(toRuleChain2Node);
+        newRuleNodes.add(toRuleChain1Node);
+        ruleChainMetaData = ruleChainService.loadRuleChainMetaData(tenantId, ruleChainMetaData.getRuleChainId());
+        ruleChainMetaData.setNodes(newRuleNodes);
+        ruleChainService.saveRuleChainMetaData(tenantId, ruleChainMetaData, Function.identity());
+
+        List<EntityRelation> newRelations = relationService.findByFromAndType(tenantId, fromRuleChainId, USES_TYPE, RelationTypeGroup.COMMON);
+        assertThat(newRelations).hasSize(2);
+        assertThat(newRelations).anySatisfy(relationToRuleChain1 -> {
+            assertThat(relationToRuleChain1.getFrom()).isEqualTo(fromRuleChainId);
+            assertThat(relationToRuleChain1.getTo()).isEqualTo(toRuleChain1Id);
+        });
+        assertThat(newRelations).anySatisfy(relationToRuleChain2 -> {
+            assertThat(relationToRuleChain2.getFrom()).isEqualTo(fromRuleChainId);
+            assertThat(relationToRuleChain2.getTo()).isEqualTo(toRuleChain2Id);
+        });
+    }
+
+    private RuleChainId saveRuleChainAndSetAutoAssignToEdge(String name) {
+        RuleChain edgeRuleChain = new RuleChain();
+        edgeRuleChain.setTenantId(tenantId);
+        edgeRuleChain.setType(RuleChainType.EDGE);
+        edgeRuleChain.setName(name);
+        RuleChain savedEdgeRuleChain = ruleChainService.saveRuleChain(edgeRuleChain);
+        ruleChainService.setAutoAssignToEdgeRuleChain(tenantId, savedEdgeRuleChain.getId());
+        return savedEdgeRuleChain.getId();
+    }
+
+    @Test
+    public void testGetRuleNodesRelationsMatchesSingleNodeLookups() throws Exception {
+        RuleChainMetaData ruleChainMetaData = createRuleChainMetadata();
+        List<RuleNodeId> ruleNodeIds = ruleChainMetaData.getNodes().stream().map(RuleNode::getId).toList();
+
+        Map<RuleNodeId, List<EntityRelation>> batched = ruleChainService.getRuleNodesRelations(tenantId, ruleNodeIds);
+
+        assertThat(batched.keySet()).containsExactlyInAnyOrderElementsOf(ruleNodeIds);
+        for (RuleNodeId ruleNodeId : ruleNodeIds) {
+            assertThat(new HashSet<>(batched.get(ruleNodeId)))
+                    .as("relations of rule node %s", ruleNodeId)
+                    .isEqualTo(new HashSet<>(ruleChainService.getRuleNodeRelations(tenantId, ruleNodeId)));
+        }
+        // node 3 has no outgoing connections, but is still present in the result
+        assertThat(batched.get(ruleChainMetaData.getNodes().get(2).getId())).isEmpty();
+
+        ruleChainService.deleteRuleChainById(tenantId, ruleChainMetaData.getRuleChainId());
+    }
+
+    @Test
+    public void testGetRuleNodesRelationsDropsAndDeletesRelationsToMissingRuleNodes() throws Exception {
+        RuleChainMetaData ruleChainMetaData = createRuleChainMetadata();
+        RuleNodeId fromId = ruleChainMetaData.getNodes().get(2).getId();
+        RuleNodeId missingTarget = new RuleNodeId(UUID.randomUUID());
+        relationService.saveRelation(tenantId, new EntityRelation(fromId, missingTarget, "success", RelationTypeGroup.RULE_NODE));
+        assertThat(relationService.findByFrom(tenantId, fromId, RelationTypeGroup.RULE_NODE)).hasSize(1);
+
+        Map<RuleNodeId, List<EntityRelation>> batched = ruleChainService.getRuleNodesRelations(tenantId, List.of(fromId));
+
+        assertThat(batched.get(fromId)).isEmpty();
+        assertThat(relationService.findByFrom(tenantId, fromId, RelationTypeGroup.RULE_NODE)).isEmpty();
+
+        ruleChainService.deleteRuleChainById(tenantId, ruleChainMetaData.getRuleChainId());
+    }
+
+    @Test
+    public void testGetRuleNodeRelationsDropsAndDeletesRelationsToMissingRuleChains() throws Exception {
+        RuleChainMetaData ruleChainMetaData = createRuleChainMetadata();
+        RuleNodeId fromId = ruleChainMetaData.getNodes().get(2).getId();
+        RuleChainId missingTarget = new RuleChainId(UUID.randomUUID());
+        relationService.saveRelation(tenantId, new EntityRelation(fromId, missingTarget, "success", RelationTypeGroup.RULE_NODE));
+        assertThat(relationService.findByFrom(tenantId, fromId, RelationTypeGroup.RULE_NODE)).hasSize(1);
+
+        assertThat(ruleChainService.getRuleNodeRelations(tenantId, fromId)).isEmpty();
+        assertThat(relationService.findByFrom(tenantId, fromId, RelationTypeGroup.RULE_NODE)).isEmpty();
+
+        ruleChainService.deleteRuleChainById(tenantId, ruleChainMetaData.getRuleChainId());
+    }
+
+    @Test
+    public void testGetRuleNodesRelationsOfRuleChainWithoutNodes() {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setTenantId(tenantId);
+        ruleChain.setName("Rule chain without nodes");
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+        List<RuleNodeId> ruleNodeIds = ruleChainService.getRuleChainNodes(tenantId, savedRuleChain.getId())
+                .stream().map(RuleNode::getId).toList();
+        assertThat(ruleNodeIds).isEmpty();
+
+        assertThat(ruleChainService.getRuleNodesRelations(tenantId, ruleNodeIds)).isEmpty();
+        assertThatThrownBy(() -> ruleChainService.getRuleNodesRelations(tenantId, null))
+                .isInstanceOf(IncorrectParameterException.class);
+
+        ruleChainService.deleteRuleChainById(tenantId, savedRuleChain.getId());
+    }
+
+    @Test
+    public void testBatchedLoadingOfRuleChainLargerThanOneBatchWithHugeConfigurations() throws Exception {
+        // More nodes than one 1024-id batch, and a few large configurations of about 1 MB each
+        int nodeCount = 1100;
+        Set<Integer> hugeConfigIndexes = Set.of(0, 1023, 1024);
+        String hugeValue = StringUtils.randomAlphanumeric(1024 * 1024);
+
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setName("Large RuleChain");
+        ruleChain.setTenantId(tenantId);
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+
+        RuleChainMetaData ruleChainMetaData = new RuleChainMetaData();
+        ruleChainMetaData.setRuleChainId(savedRuleChain.getId());
+        List<RuleNode> ruleNodes = new ArrayList<>(nodeCount);
+        for (int i = 0; i < nodeCount; i++) {
+            RuleNode ruleNode = new RuleNode();
+            ruleNode.setName("node" + i);
+            ruleNode.setType("type");
+            ObjectNode configuration = JacksonUtil.newObjectNode().put("index", i);
+            if (hugeConfigIndexes.contains(i)) {
+                configuration.put("script", hugeValue);
+                configuration.putArray("keys").add("temperature").add("humidity");
+            }
+            ruleNode.setConfiguration(configuration);
+            ruleNodes.add(ruleNode);
+        }
+        ruleChainMetaData.setFirstNodeIndex(0);
+        ruleChainMetaData.setNodes(ruleNodes);
+        // a binary tree: acyclic and shallow, with connections that span both id batches
+        for (int i = 0; i < nodeCount; i++) {
+            if (2 * i + 1 < nodeCount) {
+                ruleChainMetaData.addConnectionInfo(i, 2 * i + 1, "Success");
+            }
+            if (2 * i + 2 < nodeCount) {
+                ruleChainMetaData.addConnectionInfo(i, 2 * i + 2, "Failure");
+            }
+        }
+        Assert.assertTrue(ruleChainService.saveRuleChainMetaData(tenantId, ruleChainMetaData, Function.identity()).isSuccess());
+
+        List<RuleNode> loadedNodes = ruleChainService.getRuleChainNodes(tenantId, savedRuleChain.getId());
+
+        assertThat(loadedNodes).hasSize(nodeCount);
+        assertThat(loadedNodes).extracting(RuleNode::getId).doesNotHaveDuplicates();
+        Map<String, RuleNode> nodesByName = new HashMap<>();
+        loadedNodes.forEach(node -> nodesByName.put(node.getName(), node));
+        for (int i = 0; i < nodeCount; i++) {
+            RuleNode node = nodesByName.get("node" + i);
+            assertThat(node).as("node%s", i).isNotNull();
+            assertThat(node.getRuleChainId()).isEqualTo(savedRuleChain.getId());
+            assertThat(node.getConfiguration().get("index").asInt()).isEqualTo(i);
+            if (hugeConfigIndexes.contains(i)) {
+                assertThat(node.getConfiguration().get("script").asText()).isEqualTo(hugeValue);
+                assertThat(node.getConfiguration().get("keys")).hasSize(2);
+            } else {
+                assertThat(node.getConfiguration().has("script")).isFalse();
+            }
+        }
+
+        List<RuleNodeId> ruleNodeIds = loadedNodes.stream().map(RuleNode::getId).toList();
+        Map<RuleNodeId, List<EntityRelation>> relations = ruleChainService.getRuleNodesRelations(tenantId, ruleNodeIds);
+
+        assertThat(relations.keySet()).containsExactlyInAnyOrderElementsOf(ruleNodeIds);
+        for (int i = 0; i < nodeCount; i++) {
+            RuleNodeId from = nodesByName.get("node" + i).getId();
+            Map<String, EntityId> expected = new HashMap<>();
+            if (2 * i + 1 < nodeCount) {
+                expected.put("Success", nodesByName.get("node" + (2 * i + 1)).getId());
+            }
+            if (2 * i + 2 < nodeCount) {
+                expected.put("Failure", nodesByName.get("node" + (2 * i + 2)).getId());
+            }
+            Map<String, EntityId> actual = new HashMap<>();
+            relations.get(from).forEach(relation -> actual.put(relation.getType(), relation.getTo()));
+            assertThat(actual).as("relations of node%s", i).isEqualTo(expected);
+            assertThat(relations.get(from)).hasSize(expected.size());
+        }
+
+        ruleChainService.deleteRuleChainById(tenantId, savedRuleChain.getId());
+    }
+
+    private RuleChainMetaData createRuleChainMetadata() throws Exception {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setName("My RuleChain");
+        ruleChain.setTenantId(tenantId);
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+
+        RuleChainMetaData ruleChainMetaData = new RuleChainMetaData();
+        ruleChainMetaData.setRuleChainId(savedRuleChain.getId());
+
+        RuleNode ruleNode1 = new RuleNode();
+        ruleNode1.setName("name1");
+        ruleNode1.setType("type1");
+        ruleNode1.setConfiguration(JacksonUtil.toJsonNode("\"key1\": \"val1\""));
+
+        RuleNode ruleNode2 = new RuleNode();
+        ruleNode2.setName("name2");
+        ruleNode2.setType("type2");
+        ruleNode2.setConfiguration(JacksonUtil.toJsonNode("\"key2\": \"val2\""));
+
+        RuleNode ruleNode3 = new RuleNode();
+        ruleNode3.setName("name3");
+        ruleNode3.setType("type3");
+        ruleNode3.setConfiguration(JacksonUtil.toJsonNode("\"key3\": \"val3\""));
+
+        List<RuleNode> ruleNodes = new ArrayList<>();
+        ruleNodes.add(ruleNode1);
+        ruleNodes.add(ruleNode2);
+        ruleNodes.add(ruleNode3);
+        ruleChainMetaData.setFirstNodeIndex(0);
+        ruleChainMetaData.setNodes(ruleNodes);
+
+        ruleChainMetaData.addConnectionInfo(0, 1, "success");
+        ruleChainMetaData.addConnectionInfo(0, 2, "fail");
+        ruleChainMetaData.addConnectionInfo(1, 2, "success");
+
+        Assert.assertTrue(ruleChainService.saveRuleChainMetaData(tenantId, ruleChainMetaData, Function.identity()).isSuccess());
+        return ruleChainService.loadRuleChainMetaData(tenantId, ruleChainMetaData.getRuleChainId());
+    }
+
+    private RuleChainMetaData createRuleChainMetadataWithCirclingRelation() throws Exception {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setName("My RuleChain");
+        ruleChain.setTenantId(tenantId);
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+
+        RuleChainMetaData ruleChainMetaData = new RuleChainMetaData();
+        ruleChainMetaData.setRuleChainId(savedRuleChain.getId());
+
+        RuleNode ruleNode1 = new RuleNode();
+        ruleNode1.setName("name1");
+        ruleNode1.setType("type1");
+        ruleNode1.setConfiguration(JacksonUtil.toJsonNode("\"key1\": \"val1\""));
+
+        RuleNode ruleNode2 = new RuleNode();
+        ruleNode2.setName("name2");
+        ruleNode2.setType("type2");
+        ruleNode2.setConfiguration(JacksonUtil.toJsonNode("\"key2\": \"val2\""));
+
+        RuleNode ruleNode3 = new RuleNode();
+        ruleNode3.setName("name3");
+        ruleNode3.setType("type3");
+        ruleNode3.setConfiguration(JacksonUtil.toJsonNode("\"key3\": \"val3\""));
+
+        List<RuleNode> ruleNodes = new ArrayList<>();
+        ruleNodes.add(ruleNode1);
+        ruleNodes.add(ruleNode2);
+        ruleNodes.add(ruleNode3);
+        ruleChainMetaData.setFirstNodeIndex(0);
+        ruleChainMetaData.setNodes(ruleNodes);
+
+        ruleChainMetaData.addConnectionInfo(0, 1, "success");
+        ruleChainMetaData.addConnectionInfo(0, 2, "fail");
+        ruleChainMetaData.addConnectionInfo(1, 2, "success");
+        ruleChainMetaData.addConnectionInfo(2, 2, "success");
+
+        return ruleChainMetaData;
+    }
+
+    private RuleChainMetaData createRuleChainMetadataWithCirclingRelation2() throws Exception {
+        RuleChain ruleChain = new RuleChain();
+        ruleChain.setName("My RuleChain");
+        ruleChain.setTenantId(tenantId);
+        RuleChain savedRuleChain = ruleChainService.saveRuleChain(ruleChain);
+
+        RuleChainMetaData ruleChainMetaData = new RuleChainMetaData();
+        ruleChainMetaData.setRuleChainId(savedRuleChain.getId());
+
+        RuleNode ruleNode1 = new RuleNode();
+        ruleNode1.setName("name1");
+        ruleNode1.setType("type1");
+        ruleNode1.setConfiguration(JacksonUtil.toJsonNode("\"key1\": \"val1\""));
+
+        RuleNode ruleNode2 = new RuleNode();
+        ruleNode2.setName("name2");
+        ruleNode2.setType("type2");
+        ruleNode2.setConfiguration(JacksonUtil.toJsonNode("\"key2\": \"val2\""));
+
+        RuleNode ruleNode3 = new RuleNode();
+        ruleNode3.setName("name3");
+        ruleNode3.setType("type3");
+        ruleNode3.setConfiguration(JacksonUtil.toJsonNode("\"key3\": \"val3\""));
+
+        List<RuleNode> ruleNodes = new ArrayList<>();
+        ruleNodes.add(ruleNode1);
+        ruleNodes.add(ruleNode2);
+        ruleNodes.add(ruleNode3);
+        ruleChainMetaData.setFirstNodeIndex(0);
+        ruleChainMetaData.setNodes(ruleNodes);
+
+        ruleChainMetaData.addConnectionInfo(0, 1, "success");
+        ruleChainMetaData.addConnectionInfo(0, 2, "fail");
+        ruleChainMetaData.addConnectionInfo(1, 2, "success");
+        ruleChainMetaData.addConnectionInfo(2, 0, "success");
+
+        return ruleChainMetaData;
+    }
+
+    @Test
+    public void testFindEdgeRuleChainsByTenantIdAndName() {
+        Edge edge = constructEdge(tenantId, "My edge", "default");
+        Edge savedEdge = edgeService.saveEdge(edge);
+
+        String name1 = "Edge RuleChain name 1";
+        List<RuleChain> ruleChainsName1 = new ArrayList<>();
+        for (int i = 0; i < 123; i++) {
+            RuleChain ruleChain = new RuleChain();
+            ruleChain.setTenantId(tenantId);
+            String suffix = StringUtils.randomAlphanumeric((int) (Math.random() * 17));
+            String name = name1 + suffix;
+            name = i % 2 == 0 ? name.toLowerCase() : name.toUpperCase();
+            ruleChain.setName(name);
+            ruleChain.setType(RuleChainType.EDGE);
+            ruleChainsName1.add(ruleChainService.saveRuleChain(ruleChain));
+        }
+        ruleChainsName1.forEach(ruleChain -> ruleChainService.assignRuleChainToEdge(tenantId, ruleChain.getId(), savedEdge.getId()));
+
+        String name2 = "Edge RuleChain name 2";
+        List<RuleChain> ruleChainsName2 = new ArrayList<>();
+        for (int i = 0; i < 193; i++) {
+            RuleChain ruleChain = new RuleChain();
+            ruleChain.setTenantId(tenantId);
+            String suffix = StringUtils.randomAlphanumeric((int) (Math.random() * 15));
+            String name = name2 + suffix;
+            name = i % 2 == 0 ? name.toLowerCase() : name.toUpperCase();
+            ruleChain.setName(name);
+            ruleChain.setType(RuleChainType.EDGE);
+            ruleChainsName2.add(ruleChainService.saveRuleChain(ruleChain));
+        }
+        ruleChainsName2.forEach(ruleChain -> ruleChainService.assignRuleChainToEdge(tenantId, ruleChain.getId(), savedEdge.getId()));
+
+        List<RuleChain> loadedRuleChainsName1 = new ArrayList<>();
+        PageLink pageLink = new PageLink(19, 0, name1);
+        PageData<RuleChain> pageData = null;
+        do {
+            pageData = ruleChainService.findRuleChainsByTenantIdAndEdgeId(tenantId, savedEdge.getId(), pageLink);
+            loadedRuleChainsName1.addAll(pageData.getData());
+            if (pageData.hasNext()) {
+                pageLink = pageLink.nextPageLink();
+            }
+        } while (pageData.hasNext());
+
+        Collections.sort(ruleChainsName1, idComparator);
+        Collections.sort(loadedRuleChainsName1, idComparator);
+
+        Assert.assertEquals(ruleChainsName1, loadedRuleChainsName1);
+
+        List<RuleChain> loadedRuleChainsName2 = new ArrayList<>();
+        pageLink = new PageLink(4, 0, name2);
+        do {
+            pageData = ruleChainService.findRuleChainsByTenantIdAndEdgeId(tenantId, savedEdge.getId(), pageLink);
+            loadedRuleChainsName2.addAll(pageData.getData());
+            if (pageData.hasNext()) {
+                pageLink = pageLink.nextPageLink();
+            }
+        } while (pageData.hasNext());
+
+        Collections.sort(ruleChainsName2, idComparator);
+        Collections.sort(loadedRuleChainsName2, idComparator);
+
+        Assert.assertEquals(ruleChainsName2, loadedRuleChainsName2);
+
+        for (RuleChain ruleChain : loadedRuleChainsName1) {
+            ruleChainService.deleteRuleChainById(tenantId, ruleChain.getId());
+        }
+
+        pageLink = new PageLink(4, 0, name1);
+        pageData = ruleChainService.findRuleChainsByTenantIdAndEdgeId(tenantId, savedEdge.getId(), pageLink);
+        Assert.assertFalse(pageData.hasNext());
+        Assert.assertEquals(0, pageData.getData().size());
+
+        for (RuleChain ruleChain : loadedRuleChainsName2) {
+            ruleChainService.deleteRuleChainById(tenantId, ruleChain.getId());
+        }
+
+        pageLink = new PageLink(4, 0, name2);
+        pageData = ruleChainService.findRuleChainsByTenantIdAndEdgeId(tenantId, savedEdge.getId(), pageLink);
+        Assert.assertFalse(pageData.hasNext());
+        Assert.assertEquals(0, pageData.getData().size());
+    }
+
+    @Test
+    public void testSaveRuleChainWithExistingExternalId() {
+        RuleChainId externalRuleChainId = new RuleChainId(UUID.fromString("2675d180-e1e5-11ee-9f06-71b6c7dc2cbf"));
+
+        RuleChain ruleChain = getRuleChain();
+        ruleChain.setTenantId(tenantId);
+        ruleChain.setExternalId(externalRuleChainId);
+        ruleChainService.saveRuleChain(ruleChain);
+
+        assertThatThrownBy(() -> ruleChainService.saveRuleChain(ruleChain))
+                .isInstanceOf(DataValidationException.class)
+                .hasMessage("Rule Chain with such external id already exists!");
+
+        ruleChainService.deleteRuleChainsByTenantId(tenantId);
+    }
+
+    private RuleChain getRuleChain() {
+        String ruleChainStr = "{\n" +
+                              "  \"name\": \"Root Rule Chain\",\n" +
+                              "  \"type\": \"CORE\",\n" +
+                              "  \"firstRuleNodeId\": {\n" +
+                              "    \"entityType\": \"RULE_NODE\",\n" +
+                              "    \"id\": \"91ad0b00-e779-11ee-9cf0-15d8b6079fdb\"\n" +
+                              "  },\n" +
+                              "  \"debugMode\": false,\n" +
+                              "  \"configuration\": null,\n" +
+                              "  \"additionalInfo\": null\n" +
+                              "}";
+        return JacksonUtil.fromString(ruleChainStr, RuleChain.class);
+    }
+
+}

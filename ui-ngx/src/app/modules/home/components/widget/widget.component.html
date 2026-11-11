@@ -1,0 +1,26 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<div class="tb-absolute-fill flex flex-col" tb-toast
+     toastTarget="{{ toastTargetId }}">
+  <div class="flex-1" id="widget-container">
+    <ng-container #widgetContent></ng-container>
+  </div>
+</div>
+@if (widgetErrorData) {
+  <div class="tb-absolute-fill tb-widget-error">
+  <span [innerHtml]="('Widget Error:<br/><br/>' + widgetErrorData.message) | safe:'html'"></span>
+</div>
+}
+@if (displayNoData) {
+  <div class="tb-absolute-fill tb-widget-no-data">
+    <span style="display: flex;"
+    class="tb-absolute-fill flex items-center justify-center">{{ noDataDisplayMessageText }}</span>
+  </div>
+}
+<div class="tb-absolute-fill tb-widget-loading flex flex-col items-center justify-center" [class.!hidden]="!loadingData">
+  <mat-spinner color="accent" mode="indeterminate" diameter="40"></mat-spinner>
+</div>

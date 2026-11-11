@@ -1,0 +1,29 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<div class="flex flex-row items-center justify-start"
+     [@showHideAnimation]="{value: animationState, params: animationParams}"
+     (@showHideAnimation.done)="onHideFinished($event)"
+     [class.tb-toast]="!notification.modern"
+     [class.tb-modern-toast]="notification.modern"
+     [class.error-toast]="notification.type === 'error'"
+     [class.warn-toast]="notification.type === 'warn'"
+     [class.success-toast]="notification.type === 'success'"
+     [class.info-toast]="notification.type === 'info'">
+  @if (!notification.modern) {
+    <div class="toast-text" [innerHTML]="notification.message | safe: 'html'"></div>
+    <button #actionButton type="button" mat-button (click)="action($event)">{{ 'action.close' | translate }}</button>
+  } @else {
+    <div class="tb-modern-toast-panel"
+         [class.error-toast]="notification.type === 'error'"
+         [class.warn-toast]="notification.type === 'warn'"
+         [class.success-toast]="notification.type === 'success'"
+         [class.info-toast]="notification.type === 'info'">
+      <div class="toast-text" [innerHTML]="notification.message | safe: 'html'"></div>
+      <button #actionButton class="tb-mat-20" mat-icon-button (click)="action($event)"><mat-icon>close</mat-icon></button>
+    </div>
+  }
+</div>

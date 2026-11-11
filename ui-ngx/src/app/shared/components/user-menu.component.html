@@ -1,0 +1,62 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+    SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+
+-->
+<button #menuButton #menuPopoverFull="tbPopover" mat-button class="tb-user-menu"
+        (click)="$event.stopPropagation();"
+        tb-popover
+        [tbPopoverTrigger]="collapsed ? 'hover' : 'click'"
+        [tbPopoverMouseLeaveDelay]="0.05"
+        [tbPopoverMenu]="true"
+        [tbPopoverContent]="userMenuTpl"
+        [tbPopoverOverlayClassName]="collapsed ? 'tb-user-menu-collapsed' : ''"
+        [tbPopoverPlacement]="collapsed ? 'right' : 'topLeft'">
+  <div matButtonIcon class="tb-avatar">{{ userInitials$ | async }}</div>
+  <div class="tb-user-info">
+    @if (userDisplayName$ | async; as userDisplayName) {
+      <span tbTruncateWithTooltip class="tb-user-display-name">{{ userDisplayName }}</span>
+    }
+    @if (authorityName$ | async; as authorityName) {
+      <span tbTruncateWithTooltip class="tb-user-authority">{{ authorityName | translate }}</span>
+    }
+  </div>
+</button>
+<button #menuPopoverIcon="tbPopover" mat-icon-button class="tb-user-menu-icon"
+        (click)="$event.stopPropagation();"
+        tb-popover
+        tbPopoverTrigger="click"
+        [tbPopoverMenu]="true"
+        [tbPopoverContent]="userMenuTpl"
+        [tbPopoverPlacement]="'bottomRight'">
+  <div matButtonIcon class="tb-avatar">{{ userInitials$ | async }}</div>
+</button>
+<ng-template #userMenuTpl>
+  @if (authority$ | async; as authority) {
+    <div class="tb-menu-content tb-user-menu-items" [style.width.px]="!collapsed ? menuButton?._elementRef?.nativeElement?.offsetWidth : ''">
+      <div class="tb-user-menu-header">
+        @if (collapsed) {
+          @let fullName = userFullName$ | async;
+          @if (fullName?.length > 0) {
+            <div class="tb-user-name">
+              {{ fullName }}
+            </div>
+          }
+        }
+        <div class="tb-user-email">
+          {{ userEmail$ | async }}
+        </div>
+      </div>
+      <button mat-button (click)="menuPopoverFull?.hide(); menuPopoverIcon?.hide(); openAccount()">
+        <tb-icon matButtonIcon>mdi:account-circle-outline</tb-icon>
+        <span translate>account.account</span>
+      </button>
+      <button mat-button (click)="menuPopoverFull?.hide(); menuPopoverIcon?.hide(); logout()">
+        <tb-icon matButtonIcon>logout</tb-icon>
+        <span translate>home.logout</span>
+      </button>
+    </div>
+  }
+</ng-template>

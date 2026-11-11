@@ -1,0 +1,19 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+    SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+
+-->
+<div class="tb-edges-overview tb-absolute-fill" tb-toast toastTarget="{{ toastTargetId }}">
+  <div class="tb-absolute-fill flex flex-1 flex-col">
+    @if (!edgeIsDatasource) {
+      <span class="mat-subheader flex flex-row" translate>edge.widget-datasource-error</span>
+    }
+    <div class="tb-entities-nav-tree-panel flex-1">
+      <tb-nav-tree
+        [loadNodes]="loadNodes"
+      ></tb-nav-tree>
+    </div>
+  </div>
+</div>

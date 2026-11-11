@@ -1,0 +1,22 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<button mat-icon-button
+        type="button"
+        [class.mini-button]="miniButton"
+        [color]="color"
+        [disabled]="disabled"
+        [matTooltip]="matTooltipText"
+        [matTooltipPosition]="matTooltipPosition"
+        (click)="copy($event)">
+  @if (!copied) {
+    <tb-icon [style]="style">
+      {{  icon || mdiIcon }}
+    </tb-icon>
+  } @else {
+    <mat-icon [style]="style" class="copied">done</mat-icon>
+  }
+</button>

@@ -1,0 +1,25 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field appearance="outline" subscriptSizing="dynamic" style="width: 100%;">
+  <mat-select [formControl]="dateFormatFormControl" [compareWith]="dateFormatsCompare" >
+    @for (dateFormat of dateFormatList; track dateFormat) {
+      <mat-option [value]="dateFormat">{{ dateFormatDisplayValue(dateFormat) }}</mat-option>
+    }
+  </mat-select>
+  @if (dateFormatFormControl.value?.custom) {
+    <button #customFormatButton
+            matSuffix mat-icon-button (click)="openDateFormatSettingsPopup($event, customFormatButton)">
+      <tb-icon>edit</tb-icon>
+    </button>
+  }
+  @if (dateFormatFormControl.value?.auto && !dateFormatFormControl.value?.custom) {
+    <button #autoFormatButton
+            matSuffix mat-icon-button (click)="openAutoFormatSettingsPopup($event, autoFormatButton)">
+      <tb-icon>edit</tb-icon>
+    </button>
+  }
+</mat-form-field>

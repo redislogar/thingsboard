@@ -1,31 +1,35 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.common.data;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.BooleanNode;
+import com.fasterxml.jackson.databind.node.LongNode;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
+import org.thingsboard.server.common.data.id.CustomMenuId;
 import org.thingsboard.server.common.data.id.CustomerId;
+import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.UserId;
+import org.thingsboard.server.common.data.notification.targets.NotificationRecipient;
 import org.thingsboard.server.common.data.security.Authority;
+import org.thingsboard.server.common.data.validation.Length;
+import org.thingsboard.server.common.data.validation.NoXss;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Locale;
+import java.util.Optional;
 
+import static org.apache.commons.lang3.StringUtils.isNotEmpty;
+
+@Schema
 @EqualsAndHashCode(callSuper = true)
-public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements HasName {
+public class User extends BaseDataWithAdditionalInfo<UserId> implements GroupEntity<UserId>, NotificationRecipient, HasVersion, ExportableEntity<UserId> {
 
     private static final long serialVersionUID = 8250339805336035966L;
 
@@ -33,8 +37,22 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
     private CustomerId customerId;
     private String email;
     private Authority authority;
+    @NoXss
+    @Length(fieldName = "first name")
     private String firstName;
+    @NoXss
+    @Length(fieldName = "last name")
     private String lastName;
+    @NoXss
+    private String phone;
+    @Getter @Setter
+    private CustomMenuId customMenuId;
+
+    @Getter @Setter
+    private Long version;
+
+    @Getter @Setter
+    private UserId externalId;
 
     public User() {
         super();
@@ -52,8 +70,28 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         this.authority = user.getAuthority();
         this.firstName = user.getFirstName();
         this.lastName = user.getLastName();
+        this.phone = user.getPhone();
+        this.version = user.getVersion();
+        this.customMenuId = user.getCustomMenuId();
+        this.externalId = user.getExternalId();
     }
 
+    @Schema(description = "JSON object with the User Id. " +
+            "Specify this field to update the device. " +
+            "Referencing non-existing User Id will cause error. " +
+            "Omit this field to create new customer.")
+    @Override
+    public UserId getId() {
+        return super.getId();
+    }
+
+    @Schema(description = "Timestamp of the user creation, in milliseconds", example = "1609459200000", accessMode = Schema.AccessMode.READ_ONLY)
+    @Override
+    public long getCreatedTime() {
+        return super.getCreatedTime();
+    }
+
+    @Schema(description = "JSON object with the Tenant Id.")
     public TenantId getTenantId() {
         return tenantId;
     }
@@ -62,6 +100,7 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         this.tenantId = tenantId;
     }
 
+    @Schema(description = "JSON object with the Customer Id.")
     public CustomerId getCustomerId() {
         return customerId;
     }
@@ -70,6 +109,22 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         this.customerId = customerId;
     }
 
+    @Schema(description = "JSON object with Customer or Tenant Id", accessMode = Schema.AccessMode.READ_ONLY)
+    @Override
+    public EntityId getOwnerId() {
+        return customerId != null && !customerId.isNullUid() ? customerId : tenantId;
+    }
+
+    @Override
+    public void setOwnerId(EntityId entityId) {
+        if (EntityType.CUSTOMER.equals(entityId.getEntityType())) {
+            this.customerId = new CustomerId(entityId.getId());
+        } else {
+            this.customerId = new CustomerId(CustomerId.NULL_UUID);
+        }
+    }
+
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Email of the user", example = "user@example.com")
     public String getEmail() {
         return email;
     }
@@ -78,12 +133,14 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         this.email = email;
     }
 
+    @Schema(accessMode = Schema.AccessMode.READ_ONLY, description = "Duplicates the email of the user, readonly", example = "user@example.com")
     @Override
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public String getName() {
         return email;
     }
 
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Authority", example = "SYS_ADMIN, TENANT_ADMIN or CUSTOMER_USER")
     public Authority getAuthority() {
         return authority;
     }
@@ -92,6 +149,7 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         this.authority = authority;
     }
 
+    @Schema(description = "First name of the user", example = "John")
     public String getFirstName() {
         return firstName;
     }
@@ -100,6 +158,7 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         this.firstName = firstName;
     }
 
+    @Schema(description = "Last name of the user", example = "Doe")
     public String getLastName() {
         return lastName;
     }
@@ -108,9 +167,50 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         this.lastName = lastName;
     }
 
+    @Schema(description = "Phone number of the user", example = "38012345123")
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    @Schema(description = "Additional parameters of the user. " +
+            "May include: 'defaultDashboardId' (string, UUID of the default dashboard), " +
+            "'defaultDashboardFullscreen' (boolean), " +
+            "'homeDashboardId' (string, UUID of the home dashboard), " +
+            "'homeDashboardHideToolbar' (boolean), " +
+            "'lang' (string, user locale, e.g. 'en_US'), " +
+            "'authProviderName' (string, name of the authentication provider).",
+            implementation = com.fasterxml.jackson.databind.JsonNode.class,
+            example = "{\"defaultDashboardId\":\"784f394c-42b6-435a-983c-b7beff2784f9\",\"defaultDashboardFullscreen\":false," +
+                    "\"homeDashboardId\":\"784f394c-42b6-435a-983c-b7beff2784f9\",\"homeDashboardHideToolbar\":true,\"lang\":\"en_US\"}")
     @Override
-    public String getSearchText() {
-        return getEmail();
+    public JsonNode getAdditionalInfo() {
+        return super.getAdditionalInfo();
+    }
+
+    @JsonIgnore
+    public String getTitle() {
+        return getTitle(email, firstName, lastName);
+    }
+
+    public static String getTitle(String email, String firstName, String lastName) {
+        String title = "";
+        if (isNotEmpty(firstName)) {
+            title += firstName;
+        }
+        if (isNotEmpty(lastName)) {
+            if (!title.isEmpty()) {
+                title += " ";
+            }
+            title += lastName;
+        }
+        if (title.isEmpty()) {
+            title = email;
+        }
+        return title;
     }
 
     @Override
@@ -136,6 +236,60 @@ public class User extends SearchTextBasedWithAdditionalInfo<UserId> implements H
         builder.append(id);
         builder.append("]");
         return builder.toString();
+    }
+
+    @JsonIgnore
+    public boolean isSystemAdmin() {
+        return tenantId == null || EntityId.NULL_UUID.equals(tenantId.getId());
+    }
+
+    @JsonIgnore
+    public boolean isTenantAdmin() {
+        return !isSystemAdmin() && (customerId == null || EntityId.NULL_UUID.equals(customerId.getId()));
+    }
+
+    @JsonIgnore
+    public boolean isCustomerUser() {
+        return !isSystemAdmin() && !isTenantAdmin();
+    }
+
+    @JsonIgnore
+    public boolean isPrivacyPolicyAccepted() {
+        return getAdditionalInfoField(DataConstants.PRIVACY_POLICY_ACCEPTED, JsonNode::asBoolean, false);
+    }
+
+    public void setPrivacyPolicyAccepted() {
+        setPrivacyPolicyAccepted(System.currentTimeMillis());
+    }
+
+    public void setPrivacyPolicyAccepted(long acceptedTs) {
+        setAdditionalInfoField(DataConstants.PRIVACY_POLICY_ACCEPTED, BooleanNode.TRUE);
+        setAdditionalInfoField(DataConstants.PRIVACY_POLICY_ACCEPTED_TS, LongNode.valueOf(acceptedTs));
+    }
+
+    @JsonIgnore
+    public boolean isTermsOfUseAccepted() {
+        return getAdditionalInfoField(DataConstants.TERMS_OF_USE_ACCEPTED, JsonNode::asBoolean, false);
+    }
+
+    public void setTermsOfUseAccepted() {
+        setTermsOfUseAccepted(System.currentTimeMillis());
+    }
+
+    public void setTermsOfUseAccepted(long acceptedTs) {
+        setAdditionalInfoField(DataConstants.TERMS_OF_USE_ACCEPTED, BooleanNode.TRUE);
+        setAdditionalInfoField(DataConstants.TERMS_OF_USE_ACCEPTED_TS, LongNode.valueOf(acceptedTs));
+    }
+
+    @JsonIgnore
+    public String getLocale() {
+        return getAdditionalInfoField("lang", JsonNode::asText, Locale.US.toString());
+    }
+
+    @Override
+    @JsonIgnore
+    public EntityType getEntityType() {
+        return EntityType.USER;
     }
 
 }

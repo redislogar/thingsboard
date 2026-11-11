@@ -1,0 +1,59 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<div class="date-range-navigator"
+     [class.short-mode]="ctx.width < 400"
+     [class.labels-hidden]="settings.hideLabels"
+     [class.long-mode]="ctx.width >= 400">
+  <mat-form-field class="mat-block" [class.!hidden]="settings.hidePicker" (click)="openNavigatorPanel($event)" appearance="outline">
+    @if (!settings.hideLabels) {
+      <mat-label translate>widgets.date-range-navigator.localizationMap.Date picker</mat-label>
+    }
+    <mat-select #datePicker [ngModel]="advancedModel.chosenLabel">
+      <mat-option [value]="advancedModel.chosenLabel">
+        {{advancedModel.chosenLabel}}
+      </mat-option>
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field class="mat-block" [class.!hidden]="settings.hideInterval" appearance="outline">
+    @if (!settings.hideLabels) {
+      <mat-label translate>widgets.date-range-navigator.localizationMap.Interval</mat-label>
+    }
+    <mat-select [(ngModel)]="selectedDateInterval" (ngModelChange)="changeInterval()">
+      @if (customInterval) {
+        <mat-option [value]="customInterval.ts">
+          {{'widgets.date-range-navigator.localizationMap.' + customInterval.label | translate}}
+        </mat-option>
+      }
+      @for (date of datesMap | keyvalue: originalOrder; track date) {
+        <mat-option [value]="date.value.ts">
+          {{'widgets.date-range-navigator.localizationMap.' + date.value.label | translate}}
+        </mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <div class="drn__element step" [class.!hidden]="settings.hideStepSize">
+    <button mat-icon-button (click)="goBack()">
+      <mat-icon>keyboard_arrow_left</mat-icon>
+    </button>
+    <mat-form-field class="mat-block gt-sm:flex-1" appearance="outline">
+      @if (!settings.hideLabels) {
+        <mat-label translate>widgets.date-range-navigator.localizationMap.Step size</mat-label>
+      }
+      <mat-select [(ngModel)]="selectedStepSize">
+        @for (date of datesMap | keyvalue: originalOrder; track date) {
+          <mat-option [value]="date.value.ts">
+            {{'widgets.date-range-navigator.localizationMap.' + date.value.label | translate}}
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <button mat-icon-button (click)="goForth()">
+      <mat-icon>keyboard_arrow_right</mat-icon>
+    </button>
+  </div>
+</div>

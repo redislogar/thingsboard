@@ -1,0 +1,54 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field [formGroup]="branchFormGroup" class="mat-block"
+                [floatLabel]="(selectionMode || emptyPlaceholder) ? 'always' : 'auto'"
+                [appearance]="appearance"
+                [subscriptSizing]="subscriptSizing">
+  <mat-label>{{ 'version-control.branch' | translate }}</mat-label>
+  <input matInput type="text" placeholder="{{emptyPlaceholder || ((loading ? 'common.loading' : 'version-control.select-branch') | translate)}}"
+         #branchInput
+         #branchMatInput="matInput"
+         formControlName="branch"
+         (keydown.enter)="branchInput.blur(); autoCompleteTrigger.closePanel();"
+         (focusin)="onFocus()"
+         (blur)="onBlur()"
+         [required]="required"
+         [matAutocomplete]="branchAutocomplete">
+  @if (branchFormGroup.get('branch').value && !disabled) {
+    <button
+      type="button"
+      matSuffix mat-icon-button aria-label="Clear"
+      (click)="clear()">
+      <mat-icon class="material-icons">close</mat-icon>
+    </button>
+  }
+  <mat-autocomplete
+    class="tb-autocomplete"
+    (closed)="!branchMatInput.focused ? onPanelClosed() : false"
+    #branchAutocomplete="matAutocomplete"
+    [displayWith]="displayBranchFn">
+    @for (branch of filteredBranches | async; track branch) {
+      <mat-option [value]="branch" class="branch-option">
+        @if (selectionMode && branch.name === modelValue) {
+          <mat-icon class="tb-mat-18">check</mat-icon>
+        }
+        @if (selectionMode && branch.name !== modelValue) {
+          <span class="check-placeholder"></span>
+        }
+        <span [innerHTML]="branch.name | highlight:searchText"></span>
+        @if (branch.default) {
+          <small  class="default-branch">{{ 'version-control.default' | translate }}</small>
+        }
+      </mat-option>
+    }
+  </mat-autocomplete>
+  @if (branchFormGroup.get('branch').hasError('required')) {
+    <mat-error>
+      {{ 'version-control.branch-required' | translate }}
+    </mat-error>
+  }
+</mat-form-field>

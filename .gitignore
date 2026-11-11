@@ -30,5 +30,17 @@ pom.xml.versionsBackup
 **/build
 **/target
 **/Californium.properties
+**/Californium3.properties
 **/.env
 .instance_id
+instance-license.data
+rebuild-docker.sh
+*/.run/**
+.run/**
+.run
+instance-license.data
+.claude/
+.claude
+.planning
+docs/superpowers/
+__pycache__/

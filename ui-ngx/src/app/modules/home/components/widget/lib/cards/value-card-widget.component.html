@@ -1,0 +1,70 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+    SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+
+-->
+<div #valueCardPanel class="tb-value-card-panel" [class]="layout" [style.padding]="padding" [style]="backgroundStyle$ | async">
+  <div class="tb-value-card-overlay" [style]="overlayStyle"></div>
+  <div class="tb-value-card-title-panel">
+    <ng-container *ngTemplateOutlet="widgetTitlePanel"></ng-container>
+  </div>
+  <div #valueCardContent class="tb-value-card-content" [class]="layout">
+    @switch (layout) {
+      @case (valueCardLayout.square) {
+        <ng-container *ngTemplateOutlet="iconWithLabelTpl"></ng-container>
+        <ng-container *ngTemplateOutlet="valueTpl"></ng-container>
+      }
+      @case (valueCardLayout.vertical) {
+        <ng-container *ngTemplateOutlet="labelTpl"></ng-container>
+        <ng-container *ngTemplateOutlet="valueTpl"></ng-container>
+        <ng-container *ngTemplateOutlet="iconTpl"></ng-container>
+      }
+      @case (valueCardLayout.centered) {
+        <ng-container *ngTemplateOutlet="labelTpl"></ng-container>
+        <div class="tb-value-card-icon-row">
+          <ng-container *ngTemplateOutlet="iconTpl"></ng-container>
+          <ng-container *ngTemplateOutlet="valueTpl"></ng-container>
+        </div>
+        <ng-container *ngTemplateOutlet="dateTpl"></ng-container>
+      }
+      @case (valueCardLayout.simplified) {
+        <ng-container *ngTemplateOutlet="valueTpl"></ng-container>
+        <ng-container *ngTemplateOutlet="labelTpl"></ng-container>
+      }
+      @default {
+        <ng-container *ngTemplateOutlet="iconWithLabelTpl"></ng-container>
+        <div class="flex-1"></div>
+        <ng-container *ngTemplateOutlet="valueTpl"></ng-container>
+      }
+    }
+  </div>
+</div>
+<ng-template #iconWithLabelTpl>
+  <div class="tb-value-card-icon-row">
+    <ng-container *ngTemplateOutlet="iconTpl"></ng-container>
+    <div class="tb-value-card-label-row">
+      <ng-container *ngTemplateOutlet="labelTpl"></ng-container>
+      <ng-container *ngTemplateOutlet="dateTpl"></ng-container>
+    </div>
+  </div>
+</ng-template>
+<ng-template #iconTpl>
+  @if (showIcon) {
+    <tb-icon [style]="iconStyle" [style.color]="iconColor.color">{{ icon }}</tb-icon>
+  }
+</ng-template>
+<ng-template #labelTpl>
+  @if (showLabel) {
+    <div [style]="labelStyle" [style.color]="labelColor.color">{{ label$ | async }}</div>
+  }
+</ng-template>
+<ng-template #dateTpl>
+  @if (showDate) {
+    <div [style]="dateStyle" [style.color]="dateColor.color" [innerHTML]="dateFormat.formatted"></div>
+  }
+</ng-template>
+<ng-template #valueTpl>
+  <div class="tb-value-card-value" [style]="valueStyle" [style.color]="valueColor.color">{{ valueText }}</div>
+</ng-template>

@@ -1,0 +1,43 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field class="tb-inline-field" appearance="outline" subscriptSizing="dynamic"
+                [class.tb-suffix-absolute]="required && !entityAliasFormControl.value">
+  <input [required]="required"
+         matInput type="text"
+         placeholder="{{ 'entity.entity-alias' | translate }}"
+         #entityAliasInput
+         [formControl]="entityAliasFormControl"
+         (focusin)="onEntityAliasFocus()"
+         [matAutocomplete]="entityAliasAutocomplete">
+  @if (required && entityAliasFormControl.hasError('required')
+    && entityAliasFormControl.touched) {
+    <mat-icon matSuffix
+              matTooltipPosition="above"
+              matTooltipClass="tb-error-tooltip"
+              [matTooltip]="'entity.alias-required' | translate"
+              class="tb-error">
+      warning
+    </mat-icon>
+  }
+  @if (entityAliasFormControl.value && !entityAliasFormControl.disabled) {
+    <button
+      type="button"
+      matSuffix mat-icon-button aria-label="Clear"
+      (click)="clearEntityAlias()">
+      <mat-icon class="material-icons">close</mat-icon>
+    </button>
+  }
+  <mat-autocomplete
+    class="tb-autocomplete"
+    #entityAliasAutocomplete="matAutocomplete">
+    @for (entityAlias of filteredEntityAliases | async; track entityAlias) {
+      <mat-option [value]="entityAlias">
+        <span [innerHTML]="entityAlias | highlight:aliasSearchText"></span>
+      </mat-option>
+    }
+  </mat-autocomplete>
+</mat-form-field>

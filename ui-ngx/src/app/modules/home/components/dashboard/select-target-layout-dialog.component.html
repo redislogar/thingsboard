@@ -1,0 +1,40 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+    SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+
+-->
+<form>
+  <mat-toolbar color="tb-primary" class="tb-bottom-border">
+    <h2 translate>layout.select</h2>
+    <span class="flex-1"></span>
+    <button mat-icon-button
+            (click)="cancel()"
+            type="button">
+      <mat-icon class="material-icons">close</mat-icon>
+    </button>
+  </mat-toolbar>
+  @if (isLoading$ | async) {
+    <mat-progress-bar color="warn" mode="indeterminate">
+    </mat-progress-bar>
+  }
+  <div mat-dialog-content>
+    <fieldset [disabled]="isLoading$ | async" class="flex flex-col gap-2">
+      <div class="flex flex-row items-center justify-start gap-2">
+        <button mat-raised-button color="primary"
+                type="button"
+                class="tb-layout-button flex-1"
+                (click)="selectLayout('main')">
+          <span translate>layout.main</span>
+        </button>
+        <button mat-raised-button color="primary"
+                type="button"
+                class="tb-layout-button flex-1"
+                (click)="selectLayout('right')">
+          <span translate>layout.right</span>
+        </button>
+      </div>
+    </fieldset>
+  </div>
+</form>

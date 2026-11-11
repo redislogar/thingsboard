@@ -1,0 +1,43 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field [formGroup]="subTypeFormGroup" class="mat-block" [appearance]="appearance">
+  <mat-label>{{ entitySubtypeText | translate }}</mat-label>
+  <input matInput type="text" placeholder="{{ selectEntitySubtypeText | translate }}"
+         #subTypeInput
+         formControlName="subType"
+         (focusin)="onFocus()"
+         [required]="required"
+         [matAutocomplete]="subTypeAutocomplete">
+  @if (subTypeFormGroup.get('subType').value && !disabled) {
+    <button
+      type="button"
+      matSuffix mat-icon-button aria-label="Clear"
+      (click)="clear()">
+      <mat-icon class="material-icons">close</mat-icon>
+    </button>
+  }
+  <mat-autocomplete
+    class="tb-autocomplete"
+    #subTypeAutocomplete="matAutocomplete"
+    [displayWith]="displaySubTypeFn">
+    @for (subType of filteredSubTypes | async; track subType) {
+      <mat-option [value]="subType">
+        <span [innerHTML]="subType | highlight:searchText"></span>
+      </mat-option>
+    }
+  </mat-autocomplete>
+  @if (subTypeFormGroup.get('subType').hasError('required')) {
+    <mat-error>
+      {{ entitySubtypeRequiredText | translate }}
+    </mat-error>
+  }
+  @if (subTypeFormGroup.get('subType').hasError('maxlength')) {
+    <mat-error>
+      {{ entitySubtypeMaxLength | translate }}
+    </mat-error>
+  }
+</mat-form-field>

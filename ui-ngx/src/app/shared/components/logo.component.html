@@ -1,0 +1,25 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+    SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+
+-->
+@if (isExternal) {
+  <a [href]="link" [target]="target">
+    <ng-container *ngTemplateOutlet="logo"></ng-container>
+  </a>
+} @else {
+  <a [routerLink]="link" [target]="target">
+    <ng-container *ngTemplateOutlet="logo"></ng-container>
+  </a>
+}
+
+<ng-template #logo>
+  @if (embed) {
+    <span [innerHTML]="src | safeSvg | async"></span>
+  } @else {
+    <img [src]="src" aria-label="logo" alt="Logo"/>
+  }
+</ng-template>
+

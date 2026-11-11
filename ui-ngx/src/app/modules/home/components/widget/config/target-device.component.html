@@ -1,0 +1,32 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<div [formGroup]="targetDeviceFormGroup" class="tb-form-panel">
+  <div class="flex flex-row items-center justify-between">
+    <div class="tb-form-panel-title" translate>widget-config.target-device</div>
+    <tb-toggle-select formControlName="type">
+      <tb-toggle-option [value]="targetDeviceType.device">{{ 'device.device' | translate }}</tb-toggle-option>
+      <tb-toggle-option [value]="targetDeviceType.entity">{{ 'entity.entity-alias' | translate }}</tb-toggle-option>
+    </tb-toggle-select>
+  </div>
+  @if (targetDeviceFormGroup.get('type').value === targetDeviceType.device) {
+    <tb-entity-autocomplete
+      [appearance]="appearance"
+      [required]="(!widgetEditMode && !targetDeviceOptional)"
+      [entityType]="entityType.DEVICE"
+      formControlName="deviceId">
+    </tb-entity-autocomplete>
+  }
+  @if (targetDeviceFormGroup.get('type').value === targetDeviceType.entity) {
+    <tb-entity-alias-select
+      [appearance]="appearance"
+      [tbRequired]="(!widgetEditMode && !targetDeviceOptional)"
+      [aliasController]="aliasController"
+      [callbacks]="entityAliasSelectCallbacks"
+      formControlName="entityAliasId">
+    </tb-entity-alias-select>
+  }
+</div>

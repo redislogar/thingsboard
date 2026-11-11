@@ -1,0 +1,40 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+@import '../../../../scss/constants';
+
+.tb-toggle-menu-items {
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  .tb-menu-toggle-header {
+    display: flex;
+    align-items: center;
+    cursor: default;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 20px;
+    height: 40px;
+    padding: 8px 16px;
+  }
+  a.mat-mdc-button {
+    border-bottom: none;
+    .mat-icon {
+      color: rgba(0, 0, 0, 0.6);
+    }
+    &:hover {
+      background-color: rgba(0, 0, 0, .04);
+      border-bottom: none;
+    }
+    &:focus {
+      border-bottom: none;
+    }
+    &.tb-active {
+      background-color: color-mix(in srgb, var(--tb-primary-500) 12%, transparent);
+      color: var(--tb-primary-500);
+      .mat-icon {
+        color: var(--tb-primary-500);
+      }
+    }
+  }
+}

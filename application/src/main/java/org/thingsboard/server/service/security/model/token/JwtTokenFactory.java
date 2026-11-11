@@ -1,36 +1,42 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.service.security.model.token;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ClaimsBuilder;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.JwtBuilder;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
+import io.jsonwebtoken.MalformedJwtException;
+import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Component;
+import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.UserId;
 import org.thingsboard.server.common.data.security.Authority;
-import org.thingsboard.server.config.JwtSettings;
+import org.thingsboard.server.common.data.security.model.JwtPair;
+import org.thingsboard.server.common.data.security.model.JwtToken;
+import org.thingsboard.server.service.security.auth.jwt.settings.JwtSettingsService;
+import org.thingsboard.server.service.security.exception.JwtExpiredTokenException;
 import org.thingsboard.server.service.security.model.SecurityUser;
 import org.thingsboard.server.service.security.model.UserPrincipal;
+import org.thingsboard.server.service.security.permission.UserPermissionsService;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 import java.time.ZonedDateTime;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -38,9 +44,14 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class JwtTokenFactory {
 
+    public static int KEY_LENGTH = Jwts.SIG.HS512.getKeyBitLength();
+
     private static final String SCOPES = "scopes";
+    private static final String USER_GROUP_IDS = "userGroupIds";
     private static final String USER_ID = "userId";
     private static final String FIRST_NAME = "firstName";
     private static final String LAST_NAME = "lastName";
@@ -48,112 +59,109 @@ public class JwtTokenFactory {
     private static final String IS_PUBLIC = "isPublic";
     private static final String TENANT_ID = "tenantId";
     private static final String CUSTOMER_ID = "customerId";
+    private static final String SESSION_ID = "sessionId";
 
-    private final JwtSettings settings;
+    @Lazy
+    private final JwtSettingsService jwtSettingsService;
+    private final UserPermissionsService userPermissionsService;
 
-    @Autowired
-    public JwtTokenFactory(JwtSettings settings) {
-        this.settings = settings;
-    }
+    private volatile JwtParser jwtParser;
+    private volatile SecretKey secretKey;
 
     /**
      * Factory method for issuing new JWT Tokens.
      */
     public AccessJwtToken createAccessJwtToken(SecurityUser securityUser) {
-        if (StringUtils.isBlank(securityUser.getEmail()))
-            throw new IllegalArgumentException("Cannot create JWT Token without username/email");
-
-        if (securityUser.getAuthority() == null)
+        if (securityUser.getAuthority() == null) {
             throw new IllegalArgumentException("User doesn't have any privileges");
+        }
 
         UserPrincipal principal = securityUser.getUserPrincipal();
-        String subject = principal.getValue();
-        Claims claims = Jwts.claims().setSubject(subject);
-        claims.put(SCOPES, securityUser.getAuthorities().stream().map(s -> s.getAuthority()).collect(Collectors.toList()));
-        claims.put(USER_ID, securityUser.getId().getId().toString());
-        claims.put(FIRST_NAME, securityUser.getFirstName());
-        claims.put(LAST_NAME, securityUser.getLastName());
-        claims.put(ENABLED, securityUser.isEnabled());
-        claims.put(IS_PUBLIC, principal.getType() == UserPrincipal.Type.PUBLIC_ID);
+
+        ClaimsBuilder claimsBuilder = Jwts.claims().subject(principal.getValue());
+        JwtBuilder jwtBuilder = setUpToken(securityUser, securityUser.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority).collect(Collectors.toList()), jwtSettingsService.getJwtSettings().getTokenExpirationTime(), claimsBuilder);
+        jwtBuilder.claim(FIRST_NAME, securityUser.getFirstName())
+                .claim(LAST_NAME, securityUser.getLastName())
+                .claim(ENABLED, securityUser.isEnabled())
+                .claim(IS_PUBLIC, principal.getType() == UserPrincipal.Type.PUBLIC_ID);
         if (securityUser.getTenantId() != null) {
-            claims.put(TENANT_ID, securityUser.getTenantId().getId().toString());
+            jwtBuilder.claim(TENANT_ID, securityUser.getTenantId().getId().toString());
         }
         if (securityUser.getCustomerId() != null) {
-            claims.put(CUSTOMER_ID, securityUser.getCustomerId().getId().toString());
+            jwtBuilder.claim(CUSTOMER_ID, securityUser.getCustomerId().getId().toString());
         }
 
-        ZonedDateTime currentTime = ZonedDateTime.now();
+        String token = jwtBuilder.compact();
 
-        String token = Jwts.builder()
-                .setClaims(claims)
-                .setIssuer(settings.getTokenIssuer())
-                .setIssuedAt(Date.from(currentTime.toInstant()))
-                .setExpiration(Date.from(currentTime.plusSeconds(settings.getTokenExpirationTime()).toInstant()))
-                .signWith(SignatureAlgorithm.HS512, settings.getTokenSigningKey())
-                .compact();
-
-        return new AccessJwtToken(token, claims);
+        return new AccessJwtToken(token, claimsBuilder.build());
     }
 
-    public SecurityUser parseAccessJwtToken(RawAccessJwtToken rawAccessToken) {
-        Jws<Claims> jwsClaims = rawAccessToken.parseClaims(settings.getTokenSigningKey());
-        Claims claims = jwsClaims.getBody();
+    public SecurityUser parseAccessJwtToken(String token) {
+        Jws<Claims> jwsClaims = parseTokenClaims(token);
+        Claims claims = jwsClaims.getPayload();
         String subject = claims.getSubject();
+        @SuppressWarnings("unchecked")
         List<String> scopes = claims.get(SCOPES, List.class);
         if (scopes == null || scopes.isEmpty()) {
             throw new IllegalArgumentException("JWT Token doesn't have any scopes");
         }
 
+        Authority authority = Authority.parse(scopes.get(0));
+
         SecurityUser securityUser = new SecurityUser(new UserId(UUID.fromString(claims.get(USER_ID, String.class))));
         securityUser.setEmail(subject);
-        securityUser.setAuthority(Authority.parse(scopes.get(0)));
-        securityUser.setFirstName(claims.get(FIRST_NAME, String.class));
-        securityUser.setLastName(claims.get(LAST_NAME, String.class));
-        securityUser.setEnabled(claims.get(ENABLED, Boolean.class));
-        boolean isPublic = claims.get(IS_PUBLIC, Boolean.class);
-        UserPrincipal principal = new UserPrincipal(isPublic ? UserPrincipal.Type.PUBLIC_ID : UserPrincipal.Type.USER_NAME, subject);
-        securityUser.setUserPrincipal(principal);
+        securityUser.setAuthority(authority);
         String tenantId = claims.get(TENANT_ID, String.class);
+
         if (tenantId != null) {
-            securityUser.setTenantId(new TenantId(UUID.fromString(tenantId)));
+            securityUser.setTenantId(TenantId.fromUUID(UUID.fromString(tenantId)));
+        } else if (authority == Authority.SYS_ADMIN) {
+            securityUser.setTenantId(TenantId.SYS_TENANT_ID);
         }
         String customerId = claims.get(CUSTOMER_ID, String.class);
         if (customerId != null) {
             securityUser.setCustomerId(new CustomerId(UUID.fromString(customerId)));
         }
+        if (claims.get(SESSION_ID, String.class) != null) {
+            securityUser.setSessionId(claims.get(SESSION_ID, String.class));
+        }
 
+        boolean isPublic = false;
+        if (authority != Authority.PRE_VERIFICATION_TOKEN) {
+            if (authority != Authority.MFA_CONFIGURATION_TOKEN) {
+                securityUser.setFirstName(claims.get(FIRST_NAME, String.class));
+                securityUser.setLastName(claims.get(LAST_NAME, String.class));
+                securityUser.setEnabled(claims.get(ENABLED, Boolean.class));
+                isPublic = claims.get(IS_PUBLIC, Boolean.class);
+            }
+            try {
+                securityUser.setUserPermissions(userPermissionsService.getMergedPermissions(securityUser, isPublic));
+            } catch (Exception e) {
+                throw new BadCredentialsException("Failed to get user permissions", e);
+            }
+        }
+        UserPrincipal principal = new UserPrincipal(isPublic ? UserPrincipal.Type.PUBLIC_ID : UserPrincipal.Type.USER_NAME, subject);
+        securityUser.setUserPrincipal(principal);
         return securityUser;
     }
 
     public JwtToken createRefreshToken(SecurityUser securityUser) {
-        if (StringUtils.isBlank(securityUser.getEmail())) {
-            throw new IllegalArgumentException("Cannot create JWT Token without username/email");
-        }
-
-        ZonedDateTime currentTime = ZonedDateTime.now();
-
         UserPrincipal principal = securityUser.getUserPrincipal();
-        Claims claims = Jwts.claims().setSubject(principal.getValue());
-        claims.put(SCOPES, Collections.singletonList(Authority.REFRESH_TOKEN.name()));
-        claims.put(USER_ID, securityUser.getId().getId().toString());
-        claims.put(IS_PUBLIC, principal.getType() == UserPrincipal.Type.PUBLIC_ID);
 
-        String token = Jwts.builder()
-                .setClaims(claims)
-                .setIssuer(settings.getTokenIssuer())
-                .setId(UUID.randomUUID().toString())
-                .setIssuedAt(Date.from(currentTime.toInstant()))
-                .setExpiration(Date.from(currentTime.plusSeconds(settings.getRefreshTokenExpTime()).toInstant()))
-                .signWith(SignatureAlgorithm.HS512, settings.getTokenSigningKey())
-                .compact();
+        ClaimsBuilder claimsBuilder = Jwts.claims().subject(principal.getValue());
+        String token = setUpToken(securityUser, Collections.singletonList(Authority.REFRESH_TOKEN.name()), jwtSettingsService.getJwtSettings().getRefreshTokenExpTime(), claimsBuilder)
+                .claim(IS_PUBLIC, principal.getType() == UserPrincipal.Type.PUBLIC_ID)
+                .id(UUID.randomUUID().toString()).compact();
 
-        return new AccessJwtToken(token, claims);
+        return new AccessJwtToken(token, claimsBuilder.build());
     }
 
-    public SecurityUser parseRefreshToken(RawAccessJwtToken rawAccessToken) {
-        Jws<Claims> jwsClaims = rawAccessToken.parseClaims(settings.getTokenSigningKey());
-        Claims claims = jwsClaims.getBody();
+    public SecurityUser parseRefreshToken(String token) {
+        Jws<Claims> jwsClaims = parseTokenClaims(token);
+        Claims claims = jwsClaims.getPayload();
         String subject = claims.getSubject();
+        @SuppressWarnings("unchecked")
         List<String> scopes = claims.get(SCOPES, List.class);
         if (scopes == null || scopes.isEmpty()) {
             throw new IllegalArgumentException("Refresh Token doesn't have any scopes");
@@ -165,7 +173,91 @@ public class JwtTokenFactory {
         UserPrincipal principal = new UserPrincipal(isPublic ? UserPrincipal.Type.PUBLIC_ID : UserPrincipal.Type.USER_NAME, subject);
         SecurityUser securityUser = new SecurityUser(new UserId(UUID.fromString(claims.get(USER_ID, String.class))));
         securityUser.setUserPrincipal(principal);
+        if (claims.get(SESSION_ID, String.class) != null) {
+            securityUser.setSessionId(claims.get(SESSION_ID, String.class));
+        }
         return securityUser;
     }
 
+    public JwtToken createMfaToken(SecurityUser user, Authority scope, Integer expirationTime) {
+        ClaimsBuilder claimsBuilder = Jwts.claims().subject(user.getEmail());
+        JwtBuilder jwtBuilder = setUpToken(user, Collections.singletonList(scope.name()), expirationTime, claimsBuilder)
+                .claim(TENANT_ID, user.getTenantId().toString());
+        if (user.getCustomerId() != null) {
+            jwtBuilder.claim(CUSTOMER_ID, user.getCustomerId().toString());
+        }
+        return new AccessJwtToken(jwtBuilder.compact(), claimsBuilder.build());
+    }
+
+    public void reload() {
+        getSecretKey(true);
+        getJwtParser(true);
+    }
+
+    private JwtBuilder setUpToken(SecurityUser securityUser, List<String> scopes, long expirationTime, ClaimsBuilder claimsBuilder) {
+        if (StringUtils.isBlank(securityUser.getEmail())) {
+            throw new IllegalArgumentException("Cannot create JWT Token without username/email");
+        }
+
+        claimsBuilder
+                .add(USER_ID, securityUser.getId().getId().toString())
+                .add(SCOPES, scopes);
+        if (securityUser.getSessionId() != null) {
+            claimsBuilder.add(SESSION_ID, securityUser.getSessionId());
+        }
+
+        ZonedDateTime currentTime = ZonedDateTime.now();
+
+        claimsBuilder.expiration(Date.from(currentTime.plusSeconds(expirationTime).toInstant())); // need for getting exp time in generate report
+
+        return Jwts.builder()
+                .claims(claimsBuilder.build())
+                .issuer(jwtSettingsService.getJwtSettings().getTokenIssuer())
+                .issuedAt(Date.from(currentTime.toInstant()))
+                .signWith(getSecretKey(false), Jwts.SIG.HS512);
+    }
+
+    public Jws<Claims> parseTokenClaims(String token) {
+        try {
+            return getJwtParser(false).parseSignedClaims(token);
+        } catch (UnsupportedJwtException | MalformedJwtException | IllegalArgumentException ex) {
+            log.debug("Invalid JWT Token", ex);
+            throw new BadCredentialsException("Invalid JWT token: ", ex);
+        } catch (SignatureException | ExpiredJwtException expiredEx) {
+            log.debug("JWT Token is expired", expiredEx);
+            throw new JwtExpiredTokenException(token, "JWT Token expired", expiredEx);
+        }
+    }
+
+    public JwtPair createTokenPair(SecurityUser securityUser) {
+        securityUser.setSessionId(UUID.randomUUID().toString());
+        JwtToken accessToken = createAccessJwtToken(securityUser);
+        JwtToken refreshToken = createRefreshToken(securityUser);
+        return new JwtPair(accessToken.token(), refreshToken.token());
+    }
+
+    private SecretKey getSecretKey(boolean forceReload) {
+        if (secretKey == null || forceReload) {
+            synchronized (this) {
+                if (secretKey == null || forceReload) {
+                    byte[] decodedToken = Base64.getDecoder().decode(jwtSettingsService.getJwtSettings().getTokenSigningKey());
+                    secretKey = new SecretKeySpec(decodedToken, "HmacSHA512");
+                }
+            }
+        }
+        return secretKey;
+    }
+
+    private JwtParser getJwtParser(boolean forceReload) {
+        if (jwtParser == null || forceReload) {
+            synchronized (this) {
+                if (jwtParser == null || forceReload) {
+                    jwtParser = Jwts.parser()
+                            .verifyWith(Keys.hmacShaKeyFor(Base64.getDecoder().decode(jwtSettingsService.getJwtSettings().getTokenSigningKey())))
+                            .build();
+                }
+            }
+        }
+        return jwtParser;
+    }
 }

@@ -1,18 +1,5 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-License-Identifier: Apache-2.0
 package org.thingsboard.client.tools;
 
 /**
@@ -20,16 +7,18 @@ package org.thingsboard.client.tools;
  * This class is intended for manual MQTT SSL Testing
  */
 
-import com.google.common.io.Resources;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.MqttAsyncClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.thingsboard.server.common.data.ResourceUtils;
 
-import javax.net.ssl.*;
-import java.io.File;
-import java.io.FileInputStream;
-import java.net.URL;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import java.security.KeyStore;
 
 @Slf4j
@@ -46,20 +35,15 @@ public class MqttSslClient {
     public static void main(String[] args) {
 
         try {
-            URL ksUrl = Resources.getResource(KEY_STORE_FILE);
-            File ksFile = new File(ksUrl.toURI());
-            URL tsUrl = Resources.getResource(KEY_STORE_FILE);
-            File tsFile = new File(tsUrl.toURI());
-
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
 
             KeyStore trustStore = KeyStore.getInstance(JKS);
             char[] ksPwd = new char[]{0x63, 0x6C, 0x69, 0x65, 0x6E, 0x74, 0x5F, 0x6B, 0x73, 0x5F, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6F, 0x72, 0x64};
-            trustStore.load(new FileInputStream(tsFile), ksPwd);
+            trustStore.load(ResourceUtils.getInputStream(MqttSslClient.class.getClassLoader(), KEY_STORE_FILE), ksPwd);
             tmf.init(trustStore);
             KeyStore ks = KeyStore.getInstance(JKS);
 
-            ks.load(new FileInputStream(ksFile), ksPwd);
+            ks.load(ResourceUtils.getInputStream(MqttSslClient.class.getClassLoader(), KEY_STORE_FILE), ksPwd);
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
             char[] clientPwd = new char[]{0x63, 0x6C, 0x69, 0x65, 0x6E, 0x74, 0x5F, 0x6B, 0x65, 0x79, 0x5F, 0x70, 0x61, 0x73, 0x73, 0x77, 0x6F, 0x72, 0x64};
             kmf.init(ks, clientPwd);
@@ -71,7 +55,7 @@ public class MqttSslClient {
 
             MqttConnectOptions options = new MqttConnectOptions();
             options.setSocketFactory(sslContext.getSocketFactory());
-            MqttAsyncClient client = new MqttAsyncClient(MQTT_URL, CLIENT_ID);
+            MqttAsyncClient client = new MqttAsyncClient(MQTT_URL, CLIENT_ID, new MemoryPersistence());
             client.connect(options);
             Thread.sleep(3000);
             MqttMessage message = new MqttMessage();

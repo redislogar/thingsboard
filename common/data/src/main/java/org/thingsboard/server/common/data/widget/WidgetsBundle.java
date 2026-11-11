@@ -1,34 +1,66 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.common.data.widget;
 
-import org.thingsboard.server.common.data.SearchTextBased;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import org.thingsboard.server.common.data.BaseData;
+import org.thingsboard.server.common.data.EntityType;
+import org.thingsboard.server.common.data.ExportableEntity;
+import org.thingsboard.server.common.data.HasImage;
+import org.thingsboard.server.common.data.HasTitle;
+import org.thingsboard.server.common.data.HasVersion;
+import org.thingsboard.server.common.data.TenantEntity;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.WidgetsBundleId;
+import org.thingsboard.server.common.data.validation.Length;
+import org.thingsboard.server.common.data.validation.NoXss;
 
-import java.util.Arrays;
+import java.io.Serial;
 
-public class WidgetsBundle extends SearchTextBased<WidgetsBundleId> {
+@Schema
+@Data
+@EqualsAndHashCode(callSuper = true)
+public class WidgetsBundle extends BaseData<WidgetsBundleId> implements TenantEntity, ExportableEntity<WidgetsBundleId>, HasTitle, HasImage, HasVersion {
 
+    @Serial
     private static final long serialVersionUID = -7627368878362410489L;
 
+    @Schema(description = "JSON object with Tenant Id.", accessMode = Schema.AccessMode.READ_ONLY)
     private TenantId tenantId;
+
+    @NoXss
+    @Length(fieldName = "alias")
+    @Schema(description = "Unique alias that is used in widget types as a reference widget bundle", accessMode = Schema.AccessMode.READ_ONLY)
     private String alias;
+
+    @NoXss
+    @Length(fieldName = "title")
+    @Schema(description = "Title used in search and UI", accessMode = Schema.AccessMode.READ_ONLY)
     private String title;
-    private byte[] image;
+
+    @Schema(description = "Relative or external image URL. Replaced with image data URL (Base64) in case of relative URL and 'inlineImages' option enabled.", accessMode = Schema.AccessMode.READ_ONLY)
+    @ToString.Exclude
+    private String image;
+
+    @Schema(description = "Whether widgets bundle contains SCADA symbol widget types.", accessMode = Schema.AccessMode.READ_ONLY)
+    private boolean scada;
+
+    @NoXss
+    @Length(fieldName = "description", max = 1024)
+    @Schema(description = "Description", accessMode = Schema.AccessMode.READ_ONLY)
+    private String description;
+
+    @Schema(description = "Order", accessMode = Schema.AccessMode.READ_ONLY)
+    private Integer order;
+
+    private WidgetsBundleId externalId;
+    private Long version;
 
     public WidgetsBundle() {
         super();
@@ -44,78 +76,39 @@ public class WidgetsBundle extends SearchTextBased<WidgetsBundleId> {
         this.alias = widgetsBundle.getAlias();
         this.title = widgetsBundle.getTitle();
         this.image = widgetsBundle.getImage();
+        this.scada = widgetsBundle.isScada();
+        this.description = widgetsBundle.getDescription();
+        this.order = widgetsBundle.getOrder();
+        this.externalId = widgetsBundle.getExternalId();
+        this.version = widgetsBundle.getVersion();
     }
 
-    public TenantId getTenantId() {
-        return tenantId;
+    @Schema(description = "JSON object with the Widget Bundle Id. " +
+            "Specify this field to update the Widget Bundle. " +
+            "Referencing non-existing Widget Bundle Id will cause error. " +
+            "Omit this field to create new Widget Bundle.")
+    @Override
+    public WidgetsBundleId getId() {
+        return super.getId();
     }
 
-    public void setTenantId(TenantId tenantId) {
-        this.tenantId = tenantId;
+    @Schema(description = "Timestamp of the Widget Bundle creation, in milliseconds", example = "1609459200000", accessMode = Schema.AccessMode.READ_ONLY)
+    @Override
+    public long getCreatedTime() {
+        return super.getCreatedTime();
     }
 
-    public String getAlias() {
-        return alias;
-    }
-
-    public void setAlias(String alias) {
-        this.alias = alias;
-    }
-
-    public String getTitle() {
+    @Schema(description = "Same as title of the Widget Bundle. Read-only field. Update the 'title' to change the 'name' of the Widget Bundle.", accessMode = Schema.AccessMode.READ_ONLY)
+    @Override
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public String getName() {
         return title;
     }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
-    public byte[] getImage() {
-        return image;
-    }
-
-    public void setImage(byte[] image) {
-        this.image = image;
-    }
-
     @Override
-    public String getSearchText() {
-        return getTitle();
-    }
-
-    @Override
-    public int hashCode() {
-        int result = super.hashCode();
-        result = 31 * result + (tenantId != null ? tenantId.hashCode() : 0);
-        result = 31 * result + (alias != null ? alias.hashCode() : 0);
-        result = 31 * result + (title != null ? title.hashCode() : 0);
-        result = 31 * result + Arrays.hashCode(image);
-        return result;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
-
-        WidgetsBundle that = (WidgetsBundle) o;
-
-        if (tenantId != null ? !tenantId.equals(that.tenantId) : that.tenantId != null) return false;
-        if (alias != null ? !alias.equals(that.alias) : that.alias != null) return false;
-        if (title != null ? !title.equals(that.title) : that.title != null) return false;
-        return Arrays.equals(image, that.image);
-    }
-
-    @Override
-    public String toString() {
-        final StringBuilder sb = new StringBuilder("WidgetsBundle{");
-        sb.append("tenantId=").append(tenantId);
-        sb.append(", alias='").append(alias).append('\'');
-        sb.append(", title='").append(title).append('\'');
-        sb.append(", image=").append(Arrays.toString(image));
-        sb.append('}');
-        return sb.toString();
+    @JsonIgnore
+    public EntityType getEntityType() {
+        return EntityType.WIDGETS_BUNDLE;
     }
 
 }

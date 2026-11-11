@@ -1,0 +1,114 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+    SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+
+-->
+<ng-container [formGroup]="switchRpcSettingsFormGroup">
+  <div class="tb-form-panel">
+    <div class="tb-form-panel-title" translate>widgets.rpc.value-settings</div>
+    <div class="tb-form-row space-between">
+      <div tb-hint-tooltip-icon="{{ 'widgets.rpc.initial-value-hint' | translate }}" translate>widgets.rpc.initial-value</div>
+      <tb-toggle-select formControlName="initialValue">
+        <tb-toggle-option [value]="false">{{ 'widgets.rpc.off' | translate }}</tb-toggle-option>
+        <tb-toggle-option [value]="true">{{ 'widgets.rpc.on' | translate }}</tb-toggle-option>
+      </tb-toggle-select>
+    </div>
+    <div class="tb-form-panel stroked">
+      <div class="tb-form-panel-title" translate>widgets.rpc.retrieve-value-settings</div>
+      <div class="tb-form-row column-xs">
+        <div class="fixed-title-width" translate>widgets.rpc.retrieve-value-method</div>
+        <mat-form-field class="flex" appearance="outline" subscriptSizing="dynamic">
+          <mat-select formControlName="retrieveValueMethod">
+            <mat-option [value]="'none'">
+              {{ 'widgets.rpc.retrieve-value-method-none' | translate }}
+            </mat-option>
+            <mat-option [value]="'rpc'">
+              {{ 'widgets.rpc.retrieve-value-method-rpc' | translate }}
+            </mat-option>
+            <mat-option [value]="'attribute'">
+              {{ 'widgets.rpc.retrieve-value-method-attribute' | translate }}
+            </mat-option>
+            <mat-option [value]="'timeseries'">
+              {{ 'widgets.rpc.retrieve-value-method-timeseries' | translate }}
+            </mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+      <div class="tb-form-row"
+           [class.!hidden]="switchRpcSettingsFormGroup.get('retrieveValueMethod').value !== 'attribute' &&
+                            switchRpcSettingsFormGroup.get('retrieveValueMethod').value !== 'timeseries'">
+        <tb-device-key-autocomplete class="flex-1"
+          [aliasController]="aliasController"
+          [targetDevice]="targetDevice"
+          appearance="outline"
+          [keyType]="switchRpcSettingsFormGroup.get('retrieveValueMethod').value === 'attribute' ? dataKeyType.attribute : dataKeyType.timeseries"
+          required
+          formControlName="valueKey">
+        </tb-device-key-autocomplete>
+      </div>
+      <div class="tb-form-row column-xs" [class.!hidden]="switchRpcSettingsFormGroup.get('retrieveValueMethod').value !== 'rpc'">
+        <div class="fixed-title-width tb-required" translate>widgets.rpc.get-value-method</div>
+        <mat-form-field class="flex" appearance="outline" subscriptSizing="dynamic">
+          <input required matInput formControlName="getValueMethod" placeholder="{{ 'widget-config.set' | translate }}">
+        </mat-form-field>
+      </div>
+      <tb-js-func [class.!hidden]="switchRpcSettingsFormGroup.get('retrieveValueMethod').value === 'none'"
+        formControlName="parseValueFunction"
+        [globalVariables]="functionScopeVariables"
+        [functionArgs]="['data']"
+        functionTitle="{{ 'widgets.rpc.parse-value-function' | translate }}"
+        helpId="widget/lib/rpc/parse_value_fn">
+      </tb-js-func>
+    </div>
+    <div class="tb-form-panel stroked">
+      <div class="tb-form-panel-title" translate>widgets.rpc.update-value-settings</div>
+      <div class="tb-form-row column-xs">
+        <div class="fixed-title-width tb-required" translate>widgets.rpc.set-value-method</div>
+        <mat-form-field class="flex" appearance="outline" subscriptSizing="dynamic">
+          <input required matInput formControlName="setValueMethod" placeholder="{{ 'widget-config.set' | translate }}">
+        </mat-form-field>
+      </div>
+      <tb-js-func
+        formControlName="convertValueFunction"
+        [globalVariables]="functionScopeVariables"
+        [functionArgs]="['value']"
+        functionTitle="{{ 'widgets.rpc.convert-value-function' | translate }}"
+        helpId="widget/lib/rpc/convert_value_fn">
+      </tb-js-func>
+    </div>
+  </div>
+  <div class="tb-form-panel">
+    <div class="tb-form-panel-title" translate>widgets.rpc.rpc-settings</div>
+    <div class="tb-form-row space-between">
+      <div translate>widgets.rpc.request-timeout</div>
+      <mat-form-field appearance="outline" class="number" subscriptSizing="dynamic">
+        <input matInput type="number" min="0" formControlName="requestTimeout" placeholder="{{ 'widget-config.set' | translate }}">
+      </mat-form-field>
+    </div>
+    <div class="tb-form-panel stroked">
+      <mat-expansion-panel class="tb-settings" [expanded]="switchRpcSettingsFormGroup.get('requestPersistent').value">
+        <mat-expansion-panel-header class="flex flex-row flex-wrap">
+          <mat-panel-title>
+            <mat-slide-toggle formControlName="requestPersistent" (click)="$event.stopPropagation()"
+                              class="mat-slide flex items-stretch justify-center">
+              {{ 'widgets.rpc.request-persistent' | translate }}
+            </mat-slide-toggle>
+          </mat-panel-title>
+          <mat-panel-description class="flex items-center justify-end xs:!hidden" translate>
+            widget-config.advanced-settings
+          </mat-panel-description>
+        </mat-expansion-panel-header>
+        <ng-template matExpansionPanelContent>
+          <div class="tb-form-row space-between">
+            <div translate>widgets.rpc.persistent-polling-interval</div>
+            <mat-form-field appearance="outline" class="number" subscriptSizing="dynamic">
+              <input matInput type="number" min="1000" formControlName="persistentPollingInterval" placeholder="{{ 'widget-config.set' | translate }}">
+            </mat-form-field>
+          </div>
+        </ng-template>
+      </mat-expansion-panel>
+    </div>
+  </div>
+</ng-container>

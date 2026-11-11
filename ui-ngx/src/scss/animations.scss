@@ -1,0 +1,74 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+@keyframes tbMoveFromTopFade {
+  from {
+    opacity: 0;
+    transform: translate(0, -100%);
+  }
+
+  to {
+    opacity: var(--tb-anim-visible-opacity, 1);
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes tbMoveToTopFade {
+  from {
+    opacity: var(--tb-anim-visible-opacity, 1);
+    transform: translate(0, 0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(0, -100%);
+  }
+}
+
+@keyframes tbMoveFromBottomFade {
+  from {
+    opacity: 0;
+    transform: translate(0, 100%);
+  }
+
+  to {
+    opacity: var(--tb-anim-visible-opacity, 1);
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes tbMoveToBottomFade {
+  from {
+    opacity: var(--tb-anim-visible-opacity, 1);
+    transform: translate(0, 0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(0, 150%);
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: var(--tb-anim-visible-opacity, 1);
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeOutScale {
+  from {
+    opacity: var(--tb-anim-visible-opacity, 1);
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}

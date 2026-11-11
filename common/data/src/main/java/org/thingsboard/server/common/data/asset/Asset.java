@@ -1,39 +1,54 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.common.data.asset;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.EqualsAndHashCode;
-import org.thingsboard.server.common.data.HasAdditionalInfo;
-import org.thingsboard.server.common.data.HasName;
-import org.thingsboard.server.common.data.SearchTextBased;
-import org.thingsboard.server.common.data.SearchTextBasedWithAdditionalInfo;
+import lombok.Getter;
+import lombok.Setter;
+import org.thingsboard.server.common.data.BaseDataWithAdditionalInfo;
+import org.thingsboard.server.common.data.EntityType;
+import org.thingsboard.server.common.data.ExportableEntity;
+import org.thingsboard.server.common.data.GroupEntity;
+import org.thingsboard.server.common.data.HasLabel;
+import org.thingsboard.server.common.data.HasVersion;
 import org.thingsboard.server.common.data.id.AssetId;
+import org.thingsboard.server.common.data.id.AssetProfileId;
 import org.thingsboard.server.common.data.id.CustomerId;
+import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.TenantId;
+import org.thingsboard.server.common.data.validation.Length;
+import org.thingsboard.server.common.data.validation.NoXss;
 
+import java.util.Optional;
+
+@Schema
 @EqualsAndHashCode(callSuper = true)
-public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements HasName {
+public class Asset extends BaseDataWithAdditionalInfo<AssetId> implements HasLabel, GroupEntity<AssetId>, ExportableEntity<AssetId>, HasVersion {
 
     private static final long serialVersionUID = 2807343040519543363L;
 
     private TenantId tenantId;
     private CustomerId customerId;
+    @NoXss
+    @Length(fieldName = "name")
     private String name;
+    @NoXss
+    @Length(fieldName = "type")
     private String type;
+    @NoXss
+    @Length(fieldName = "label")
+    private String label;
+
+    private AssetProfileId assetProfileId;
+
+    @Getter @Setter
+    private AssetId externalId;
+    @Getter @Setter
+    private Long version;
 
     public Asset() {
         super();
@@ -49,8 +64,40 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         this.customerId = asset.getCustomerId();
         this.name = asset.getName();
         this.type = asset.getType();
+        this.label = asset.getLabel();
+        this.assetProfileId = asset.getAssetProfileId();
+        this.externalId = asset.getExternalId();
+        this.version = asset.getVersion();
     }
 
+    public void update(Asset asset) {
+        this.tenantId = asset.getTenantId();
+        this.customerId = asset.getCustomerId();
+        this.name = asset.getName();
+        this.type = asset.getType();
+        this.label = asset.getLabel();
+        this.assetProfileId = asset.getAssetProfileId();
+        Optional.ofNullable(asset.getAdditionalInfo()).ifPresent(this::setAdditionalInfo);
+        this.externalId = asset.getExternalId();
+        this.version = asset.getVersion();
+    }
+
+    @Schema(description = "JSON object with the asset Id. " +
+            "Specify this field to update the asset. " +
+            "Referencing non-existing asset Id will cause error. " +
+            "Omit this field to create new asset.")
+    @Override
+    public AssetId getId() {
+        return super.getId();
+    }
+
+    @Schema(description = "Timestamp of the asset creation, in milliseconds", example = "1609459200000", accessMode = Schema.AccessMode.READ_ONLY)
+    @Override
+    public long getCreatedTime() {
+        return super.getCreatedTime();
+    }
+
+    @Schema(description = "JSON object with Tenant Id.", accessMode = Schema.AccessMode.READ_ONLY)
     public TenantId getTenantId() {
         return tenantId;
     }
@@ -59,6 +106,7 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         this.tenantId = tenantId;
     }
 
+    @Schema(description = "JSON object with Customer Id. Optional on create: when omitted, defaults to the owner of the target Entity Group or to the current Customer user. Cannot be changed on update via this endpoint; use the Owner API (changeOwnerToCustomer) to re-assign an existing Asset.")
     public CustomerId getCustomerId() {
         return customerId;
     }
@@ -67,6 +115,22 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         this.customerId = customerId;
     }
 
+    @Schema(description = "JSON object with Customer or Tenant Id", accessMode = Schema.AccessMode.READ_ONLY)
+    @Override
+    public EntityId getOwnerId() {
+        return customerId != null && !customerId.isNullUid() ? customerId : tenantId;
+    }
+
+    @Override
+    public void setOwnerId(EntityId entityId) {
+        if (EntityType.CUSTOMER.equals(entityId.getEntityType())) {
+            this.customerId = new CustomerId(entityId.getId());
+        } else {
+            this.customerId = new CustomerId(CustomerId.NULL_UUID);
+        }
+    }
+
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED, description = "Unique Asset Name in scope of Tenant", example = "Empire State Building")
     @Override
     public String getName() {
         return name;
@@ -76,6 +140,7 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         this.name = name;
     }
 
+    @Schema(description = "Asset type", example = "Building")
     public String getType() {
         return type;
     }
@@ -84,9 +149,31 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         this.type = type;
     }
 
+    @Schema(description = "Label that may be used in widgets", example = "NY Building")
+    public String getLabel() {
+        return label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
+    }
+
+    @Schema(description = "JSON object with Asset Profile Id.")
+    public AssetProfileId getAssetProfileId() {
+        return assetProfileId;
+    }
+
+    public void setAssetProfileId(AssetProfileId assetProfileId) {
+        this.assetProfileId = assetProfileId;
+    }
+
+    @Schema(description = "Additional parameters of the asset. " +
+            "May include: 'description' (string).",
+            implementation = com.fasterxml.jackson.databind.JsonNode.class,
+            example = "{\"description\":\"Building A asset\"}")
     @Override
-    public String getSearchText() {
-        return getName();
+    public JsonNode getAdditionalInfo() {
+        return super.getAdditionalInfo();
     }
 
     @Override
@@ -100,6 +187,10 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         builder.append(name);
         builder.append(", type=");
         builder.append(type);
+        builder.append(", label=");
+        builder.append(label);
+        builder.append(", assetProfileId=");
+        builder.append(assetProfileId);
         builder.append(", additionalInfo=");
         builder.append(getAdditionalInfo());
         builder.append(", createdTime=");
@@ -109,5 +200,12 @@ public class Asset extends SearchTextBasedWithAdditionalInfo<AssetId> implements
         builder.append("]");
         return builder.toString();
     }
+
+    @Override
+    @JsonIgnore
+    public EntityType getEntityType() {
+        return EntityType.ASSET;
+    }
+
 
 }

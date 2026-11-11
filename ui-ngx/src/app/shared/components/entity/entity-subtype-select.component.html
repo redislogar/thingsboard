@@ -1,0 +1,23 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<mat-form-field [formGroup]="subTypeFormGroup" class="mat-block" subscriptSizing="{{ subscriptSizing }}">
+  @if (showLabel) {
+    <mat-label>{{ entitySubtypeTitle | translate }}</mat-label>
+  }
+  <mat-select [class.!hidden]="!subTypesLoaded" class="tb-entity-subtype-select" formControlName="subType">
+    @for (subType of subTypesOptions | async; track subType) {
+      <mat-option [value]="subType">
+        {{ displaySubTypeFn(subType) }}
+      </mat-option>
+    }
+  </mat-select>
+  @if (subTypeFormGroup.get('subType').hasError('required')) {
+    <mat-error>
+      {{ entitySubtypeRequiredText | translate }}
+    </mat-error>
+  }
+</mat-form-field>

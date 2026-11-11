@@ -1,44 +1,65 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.common.data.relation;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.thingsboard.server.common.data.SearchTextBasedWithAdditionalInfo;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+import org.thingsboard.server.common.data.BaseDataWithAdditionalInfo;
+import org.thingsboard.server.common.data.HasVersion;
+import org.thingsboard.server.common.data.ObjectType;
+import org.thingsboard.server.common.data.edqs.EdqsObject;
+import org.thingsboard.server.common.data.edqs.EdqsObjectKey;
 import org.thingsboard.server.common.data.id.EntityId;
+import org.thingsboard.server.common.data.validation.Length;
+import org.thingsboard.server.common.data.validation.NoNullChar;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
+import java.io.Serial;
 import java.io.Serializable;
+import java.util.UUID;
 
-@Slf4j
-public class EntityRelation implements Serializable {
+@Data
+@Schema
+@EqualsAndHashCode(exclude = "additionalInfoBytes")
+@ToString(exclude = {"additionalInfoBytes"})
+public class EntityRelation implements HasVersion, Serializable, EdqsObject {
 
+    @Serial
     private static final long serialVersionUID = 2807343040519543363L;
 
+    public static final String INTEGRATION_TYPE = "ManagedByIntegration";
+    public static final String MANAGED_BY_AGENT_APP_TYPE = "ManagedByAgentApp";
+    public static final String EDGE_TYPE = "ManagedByEdge";
     public static final String CONTAINS_TYPE = "Contains";
     public static final String MANAGES_TYPE = "Manages";
+    public static final String USES_TYPE = "Uses";
 
+    @NotNull
+    @Schema(description = "JSON object with [from] Entity Id.", accessMode = Schema.AccessMode.READ_WRITE)
     private EntityId from;
+
+    @NotNull
+    @Schema(description = "JSON object with [to] Entity Id.", accessMode = Schema.AccessMode.READ_WRITE)
     private EntityId to;
+
+    @NotBlank
+    @NoNullChar
+    @Length(max = 255, fieldName = "type")
+    @Schema(description = "String value of relation type.", example = "Contains")
     private String type;
+
+    @NotNull
+    @Schema(description = "Represents the type group of the relation.", example = "COMMON")
     private RelationTypeGroup typeGroup;
+
+    private Long version;
+
     private transient JsonNode additionalInfo;
     @JsonIgnore
     private byte[] additionalInfoBytes;
@@ -69,67 +90,35 @@ public class EntityRelation implements Serializable {
         this.type = entityRelation.getType();
         this.typeGroup = entityRelation.getTypeGroup();
         this.additionalInfo = entityRelation.getAdditionalInfo();
+        this.version = entityRelation.getVersion();
     }
 
-    public EntityId getFrom() {
-        return from;
-    }
-
-    public void setFrom(EntityId from) {
-        this.from = from;
-    }
-
-    public EntityId getTo() {
-        return to;
-    }
-
-    public void setTo(EntityId to) {
-        this.to = to;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public RelationTypeGroup getTypeGroup() {
-        return typeGroup;
-    }
-
-    public void setTypeGroup(RelationTypeGroup typeGroup) {
-        this.typeGroup = typeGroup;
-    }
-
+    @Schema(description = "Additional parameters of the relation.",
+            implementation = JsonNode.class,
+            example = "{\"description\":\"Power supply connection\"}")
     public JsonNode getAdditionalInfo() {
-        return SearchTextBasedWithAdditionalInfo.getJson(() -> additionalInfo, () -> additionalInfoBytes);
+        return BaseDataWithAdditionalInfo.getJson(() -> additionalInfo, () -> additionalInfoBytes);
     }
 
     public void setAdditionalInfo(JsonNode addInfo) {
-        SearchTextBasedWithAdditionalInfo.setJson(addInfo, json -> this.additionalInfo = json, bytes -> this.additionalInfoBytes = bytes);
+        BaseDataWithAdditionalInfo.setJson(addInfo, json -> this.additionalInfo = json, bytes -> this.additionalInfoBytes = bytes);
     }
 
     @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-
-        EntityRelation that = (EntityRelation) o;
-
-        if (from != null ? !from.equals(that.from) : that.from != null) return false;
-        if (to != null ? !to.equals(that.to) : that.to != null) return false;
-        if (type != null ? !type.equals(that.type) : that.type != null) return false;
-        return typeGroup == that.typeGroup;
+    public String stringKey() {
+        return "r_" + from + "_" + to + "_" + typeGroup + "_" + type;
     }
 
     @Override
-    public int hashCode() {
-        int result = from != null ? from.hashCode() : 0;
-        result = 31 * result + (to != null ? to.hashCode() : 0);
-        result = 31 * result + (type != null ? type.hashCode() : 0);
-        result = 31 * result + (typeGroup != null ? typeGroup.hashCode() : 0);
-        return result;
+    public Long version() {
+        return version;
     }
+
+    @Override
+    public ObjectType type() {
+        return ObjectType.RELATION;
+    }
+
+    public record Key(UUID from, UUID to, RelationTypeGroup typeGroup, String type) implements EdqsObjectKey {}
+
 }

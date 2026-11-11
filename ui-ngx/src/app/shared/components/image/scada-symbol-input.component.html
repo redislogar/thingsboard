@@ -1,0 +1,66 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<div class="tb-container">
+  @if (label) {
+    <label class="tb-title" [class]="{'tb-error': !disabled && (required && linkType === ScadaSymbolLinkType.none), 'tb-required': !disabled && required}">{{label}}</label>
+  }
+  <div class="tb-scada-symbol-select-container" [class]="{disabled: disabled && linkType === ScadaSymbolLinkType.none}">
+    <div class="tb-scada-symbol-container">
+      @if (linkType !== ScadaSymbolLinkType.none && scadaSymbolUrl) {
+        <img class="tb-scada-symbol-preview" [src]="scadaSymbolUrl | image: {preview: true} | async">
+      } @else {
+        <div class="tb-no-symbol">{{ (disabled ? 'scada.no-symbol' : 'scada.no-symbol-selected') | translate }}</div>
+      }
+    </div>
+    @if (linkType !== ScadaSymbolLinkType.none && !disabled) {
+      <div class="tb-scada-symbol-info-container">
+        @if (linkType === ScadaSymbolLinkType.resource) {
+          <div class="tb-resource-scada-symbol-container" [class]="{loading: loadingImageResource}">
+            @if (!loadingImageResource) {
+              <div class="tb-scada-symbol-title">
+                {{ imageResource.title | customTranslate }}
+              </div>
+            } @else {
+              <mat-spinner [diameter]="80" strokeWidth="4"></mat-spinner>
+            }
+          </div>
+        }
+        @if (linkType === ScadaSymbolLinkType.content) {
+          <div class="tb-resource-scada-symbol-container">
+            <div class="tb-scada-symbol-title">
+              {{ scadaSymbolMetadata.title | customTranslate }}
+            </div>
+          </div>
+        }
+        @if (linkType === ScadaSymbolLinkType.resource && !disabled) {
+          <button
+            class="tb-scada-symbol-clear-btn"
+            type="button"
+            mat-icon-button
+            matTooltip="{{ 'scada.clear-symbol' | translate }}"
+            matTooltipPosition="above"
+            (click)="clearSymbol()">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </div>
+    }
+    @if (linkType === ScadaSymbolLinkType.none && !disabled) {
+      <div class="tb-scada-symbol-select-buttons-container">
+        <button mat-stroked-button
+                type="button"
+                color="primary"
+                class="tb-scada-symbol-select-button"
+                (click)="openGallery($event)">
+          <tb-icon matButtonIcon>filter</tb-icon>
+          <span translate>scada.browse-symbol-from-gallery</span>
+        </button>
+      </div>
+    }
+  </div>
+</div>
+

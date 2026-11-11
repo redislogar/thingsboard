@@ -1,0 +1,42 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+import { Component } from '@angular/core';
+import { Store } from '@ngrx/store';
+import { AppState } from '@core/core.state';
+import { Device, DeviceInfo } from '@shared/models/device.models';
+import { EntityTabsComponent } from '../../components/entity/entity-tabs.component';
+import { EntityId } from "@shared/models/id/entity-id";
+
+@Component({
+    selector: 'tb-device-tabs',
+    templateUrl: './device-tabs.component.html',
+    styleUrls: [],
+    standalone: false
+})
+export class DeviceTabsComponent extends EntityTabsComponent<Device> {
+
+  ownerId: EntityId;
+
+  constructor(protected store: Store<AppState>) {
+    super(store);
+  }
+
+  ngOnInit() {
+    super.ngOnInit();
+  }
+
+  resolveTabIndex(tab: string): number {
+    if (tab === 'cf') {
+      return 3;
+    } else {
+      return super.resolveTabIndex(tab);
+    }
+  }
+
+  protected setEntity(entity: DeviceInfo) {
+    this.ownerId = entity.customerId.id !== this.nullUid ? entity.customerId : entity.tenantId;
+    super.setEntity(entity);
+  }
+
+}

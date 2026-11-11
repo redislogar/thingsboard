@@ -1,0 +1,48 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+@import './../../../scss/mixins';
+
+:host {
+  .mat-mdc-form-field {
+    width: 100%;
+    mat-label {
+      .mat-icon {
+        margin-right: 4px;
+      }
+    }
+    &.tb-default-color {
+      ::ng-deep input.mdc-text-field__input {
+        &::placeholder {
+          font-size: 16px;
+          font-weight: 500;
+          color: #666;
+        }
+        &:-ms-input-placeholder {
+          font-size: 16px;
+          font-weight: 500;
+          color: #666;
+        }
+      }
+    }
+  }
+  .tb-color-preview {
+    margin-left: 8px;
+    margin-right: 5px;
+    &.no-margin {
+      margin: 0;
+    }
+  }
+  .tb-palette-preview {
+    margin-left: 16px;
+    margin-right: 8px;
+    width: 40px;
+    height: 28px;
+    border-radius: 80px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+  }
+
+  .button-no-border {
+    border: none;
+  }
+}

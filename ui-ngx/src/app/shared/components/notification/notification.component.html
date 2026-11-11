@@ -1,0 +1,49 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<section class="notification flex flex-row items-start justify-between"
+         [style]="{borderColor: notificationColor(), backgroundColor: notificationBackgroundColor()}">
+  @if (showIcon) {
+    <div>
+      <tb-icon class="icon" [style.color]="notification.additionalConfig.icon.color">
+        {{ notification.additionalConfig.icon.icon }}
+      </tb-icon>
+    </div>
+  } @else {
+    @if (notificationTypeIcons.get(notification.type)) {
+      <tb-icon class="icon" [style]="notificationIconColor()">
+        {{ notificationTypeIcons.get(notification.type) }}
+      </tb-icon>
+    }
+  }
+  <div class="content flex-1">
+    <div class="title" [innerHTML]="title"></div>
+    <div class="message" [innerHTML]="message"></div>
+    @if (showButton) {
+      <button mat-stroked-button class="button" color="primary"
+              (click)="navigate($event)">
+        {{ buttonLabel }}
+      </button>
+    }
+  </div>
+  <div class="description flex flex-col items-end justify-start">
+    <span class="time">{{ notification.createdTime ?? currentDate | dateAgo }}</span>
+    @if (!hideMarkAsReadButton) {
+      <button mat-icon-button (click)="markRead($event)"
+              matTooltip="{{ 'notification.mark-as-read' | translate }}" matTooltipPosition="above">
+        <mat-icon>check_circle_outline</mat-icon>
+      </button>
+    }
+    @if (notification.type === notificationType.ALARM && !notification.info.cleared) {
+      <div class="alarm-severity"
+           [style.background-color]="alarmColorSeverityBackground()">
+        <span [style]="notificationIconColor()" class="severity">
+          {{alarmSeverityTranslations.get(notification.info.alarmSeverity) | translate}}
+        </span>
+      </div>
+    }
+  </div>
+</section>

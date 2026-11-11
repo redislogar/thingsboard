@@ -1,0 +1,45 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+    SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+
+-->
+<form [formGroup]="attributeFormGroup" (ngSubmit)="save()" style="min-width: 500px;">
+  <mat-toolbar color="tb-primary" class="tb-bottom-border">
+    <h2>
+      {{ (readonly ? 'device-profile.lwm2m.view-attributes' : 'device-profile.lwm2m.edit-attributes') | translate : {name: name} }}
+    </h2>
+    <span class="flex-1"></span>
+    <button mat-icon-button
+            (click)="cancel()"
+            type="button">
+      <mat-icon class="material-icons">close</mat-icon>
+    </button>
+  </mat-toolbar>
+  @if (isLoading$ | async) {
+    <mat-progress-bar color="warn" mode="indeterminate">
+    </mat-progress-bar>
+  }
+  <div mat-dialog-content>
+    <tb-lwm2m-attributes-key-list
+      [isResource]="isResource"
+      formControlName="attributes">
+    </tb-lwm2m-attributes-key-list>
+  </div>
+  <div mat-dialog-actions class="flex items-center justify-end">
+    <button mat-button color="primary"
+            type="button"
+            [disabled]="(isLoading$ | async)"
+            (click)="cancel()" cdkFocusInitial>
+      {{ (readonly ? 'action.close' : 'action.cancel') | translate }}
+    </button>
+    @if (!readonly) {
+      <button mat-raised-button color="primary"
+              type="submit"
+              [disabled]="(isLoading$ | async) || attributeFormGroup.invalid || !attributeFormGroup.dirty">
+        {{ 'action.save' | translate }}
+      </button>
+    }
+  </div>
+</form>

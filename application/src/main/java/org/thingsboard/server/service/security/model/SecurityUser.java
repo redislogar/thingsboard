@@ -1,26 +1,18 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.service.security.model;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.thingsboard.server.common.data.User;
 import org.thingsboard.server.common.data.id.UserId;
+import org.thingsboard.server.common.data.permission.MergedUserPermissions;
 
 import java.util.Collection;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -29,8 +21,16 @@ public class SecurityUser extends User {
     private static final long serialVersionUID = -797397440703066079L;
 
     private Collection<GrantedAuthority> authorities;
+    @Getter @Setter
     private boolean enabled;
+    @Getter @Setter
     private UserPrincipal userPrincipal;
+    @Getter @Setter
+    private MergedUserPermissions userPermissions;
+    @Getter @Setter
+    private String sessionId = UUID.randomUUID().toString();
+    @Getter @Setter
+    private String clientAddress;
 
     public SecurityUser() {
         super();
@@ -40,10 +40,11 @@ public class SecurityUser extends User {
         super(id);
     }
 
-    public SecurityUser(User user, boolean enabled, UserPrincipal userPrincipal) {
+    public SecurityUser(User user, boolean enabled, UserPrincipal userPrincipal, MergedUserPermissions userPermissions) {
         super(user);
         this.enabled = enabled;
         this.userPrincipal = userPrincipal;
+        this.userPermissions = userPermissions;
     }
 
     public Collection<GrantedAuthority> getAuthorities() {
@@ -53,22 +54,6 @@ public class SecurityUser extends User {
                     .collect(Collectors.toList());
         }
         return authorities;
-    }
-
-    public boolean isEnabled() {
-        return enabled;
-    }
-
-    public UserPrincipal getUserPrincipal() {
-        return userPrincipal;
-    }
-
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-
-    public void setUserPrincipal(UserPrincipal userPrincipal) {
-        this.userPrincipal = userPrincipal;
     }
 
 }

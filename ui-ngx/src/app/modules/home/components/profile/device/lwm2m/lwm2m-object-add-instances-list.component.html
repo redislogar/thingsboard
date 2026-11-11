@@ -1,0 +1,47 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<section [formGroup]="instancesListFormGroup" class="lwm2m-instances-list">
+  <mat-form-field class="mat-block" appearance="outline">
+    <mat-label>{{ 'device-profile.lwm2m.instances-list' | translate }}</mat-label>
+    <mat-chip-grid #chipList formControlName="instanceList" [required]="required" (focus)="onFocus()">
+      @for (instanceId of instancesId; track instanceId) {
+        <mat-chip-row
+          [removable]="!disabled"
+          (removed)="remove(instanceId)">
+          {{instanceId}}
+          @if (!disabled) {
+            <mat-icon matChipRemove>close</mat-icon>
+          }
+        </mat-chip-row>
+      }
+      <input matInput type="text"
+             #instanceId
+             style="max-width: 70px;"
+             formControlName="instanceId"
+             [matChipInputFor]="chipList"
+             [matChipInputSeparatorKeyCodes]="separatorKeysCodes"
+             matChipInputAddOnBlur
+             (matChipInputTokenEnd)="add($event)">
+    </mat-chip-grid>
+    @if (instancesListFormGroup.get('instanceList').hasError('required')) {
+      <mat-error>
+        {{ 'device-profile.lwm2m.instances-list-required' | translate }}
+      </mat-error>
+    }
+    @if (instancesListFormGroup.get('instanceId').hasError('pattern')) {
+      <mat-error>
+        {{ 'device-profile.lwm2m.instance-id-pattern' | translate }}
+      </mat-error>
+    }
+    @if (instancesListFormGroup.get('instanceId').hasError('max')) {
+      <mat-error>
+        {{ 'device-profile.lwm2m.instance-id-max' | translate: {max: instanceIdValueMax} }}
+      </mat-error>
+    }
+  </mat-form-field>
+</section>
+

@@ -1,40 +1,38 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.system;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import org.awaitility.Awaitility;
 import org.junit.Before;
 import org.junit.Test;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.Device;
 import org.thingsboard.server.common.data.security.DeviceCredentials;
 import org.thingsboard.server.controller.AbstractControllerTest;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * @author Andrew Shvayka
- */
+@TestPropertySource(properties = {
+        "transport.http.enabled=true",
+        "transport.http.max_payload_size=/api/v1/*/rpc/**=10000;/api/v1/**=20000"
+})
 public abstract class BaseHttpDeviceApiTest extends AbstractControllerTest {
 
     private static final AtomicInteger idSeq = new AtomicInteger(new Random(System.currentTimeMillis()).nextInt());
@@ -57,14 +55,121 @@ public abstract class BaseHttpDeviceApiTest extends AbstractControllerTest {
     @Test
     public void testGetAttributes() throws Exception {
         doGetAsync("/api/v1/" + "WRONG_TOKEN" + "/attributes?clientKeys=keyA,keyB,keyC").andExpect(status().isUnauthorized());
-        doGetAsync("/api/v1/" + deviceCredentials.getCredentialsId() + "/attributes?clientKeys=keyA,keyB,keyC").andExpect(status().isNotFound());
+        doGetAsync("/api/v1/" + deviceCredentials.getCredentialsId() + "/attributes?clientKeys=keyA,keyB,keyC").andExpect(status().isOk());
 
         Map<String, String> attrMap = new HashMap<>();
         attrMap.put("keyA", "valueA");
         mockMvc.perform(
                 asyncDispatch(doPost("/api/v1/" + deviceCredentials.getCredentialsId() + "/attributes", attrMap, new String[]{}).andReturn()))
                 .andExpect(status().isOk());
+        Thread.sleep(2000);
         doGetAsync("/api/v1/" + deviceCredentials.getCredentialsId() + "/attributes?clientKeys=keyA,keyB,keyC").andExpect(status().isOk());
+    }
+
+    @Test
+    public void testGetAllClientAttributesViaAllClientKeysParam() throws Exception {
+        String token = deviceCredentials.getCredentialsId();
+        Map<String, String> clientAttrs = new HashMap<>();
+        clientAttrs.put("clientA", "valueA");
+        clientAttrs.put("clientB", "valueB");
+        mockMvc.perform(
+                        asyncDispatch(doPost("/api/v1/" + token + "/attributes", clientAttrs, new String[]{}).andReturn()))
+                .andExpect(status().isOk());
+        String allClientKeysUrl = "/api/v1/" + token + "/attributes?allClientKeys=true";
+        Awaitility.await("client attributes are persisted and returned via allClientKeys=true")
+                .atMost(30, TimeUnit.SECONDS)
+                .pollInterval(Duration.ofMillis(100))
+                .ignoreExceptions()
+                .until(() -> {
+                    JsonNode r = JacksonUtil.toJsonNode(doGetAsync(allClientKeysUrl).andReturn().getResponse().getContentAsString());
+                    return r.has("client") && clientAttrs.keySet().stream().allMatch(r.get("client")::has);
+                });
+        String body = doGetAsync(allClientKeysUrl)
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode resp = JacksonUtil.toJsonNode(body);
+        assertThat(resp.has("client")).isTrue();
+        JsonNode client = resp.get("client");
+        clientAttrs.forEach((key, value) -> assertThat(client.get(key).asText()).isEqualTo(value));
+        assertThat(resp.has("shared")).isFalse();
+    }
+
+    @Test
+    public void testGetAllSharedAttributesViaAllSharedKeysParam() throws Exception {
+        String token = deviceCredentials.getCredentialsId();
+        Map<String, String> sharedAttrs = new HashMap<>();
+        sharedAttrs.put("sharedA", "valueA");
+        sharedAttrs.put("sharedB", "valueB");
+        mockMvc.perform(
+                        asyncDispatch(doPost("/api/plugins/telemetry/DEVICE/" + device.getId().getId() + "/attributes/SHARED_SCOPE", sharedAttrs).andReturn()))
+                .andExpect(status().isOk());
+        String allSharedKeysUrl = "/api/v1/" + token + "/attributes?allSharedKeys=true";
+        Awaitility.await("shared attributes are persisted and returned via allSharedKeys=true")
+                .atMost(30, TimeUnit.SECONDS)
+                .pollInterval(Duration.ofMillis(100))
+                .ignoreExceptions()
+                .until(() -> {
+                    JsonNode r = JacksonUtil.toJsonNode(doGetAsync(allSharedKeysUrl).andReturn().getResponse().getContentAsString());
+                    return r.has("shared") && sharedAttrs.keySet().stream().allMatch(r.get("shared")::has);
+                });
+        String body = doGetAsync(allSharedKeysUrl)
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode resp = JacksonUtil.toJsonNode(body);
+        assertThat(resp.has("shared")).isTrue();
+        JsonNode shared = resp.get("shared");
+        sharedAttrs.forEach((key, value) -> assertThat(shared.get(key).asText()).isEqualTo(value));
+        assertThat(resp.has("client")).isFalse();
+    }
+
+    @Test
+    public void testReplyToCommandWithLargeResponse() throws Exception {
+        String errorResponse = doPost("/api/v1/" + deviceCredentials.getCredentialsId() + "/rpc/5",
+                JacksonUtil.toString(createJsonPayloadOfSize(10001)),
+                String.class,
+                status().isPayloadTooLarge());
+        assertThat(errorResponse).contains("Payload size exceeds the limit");
+
+        doPost("/api/v1/" + deviceCredentials.getCredentialsId() + "/rpc/5",
+                JacksonUtil.toString(createJsonPayloadOfSize(10000)),
+                String.class,
+                status().isOk());
+    }
+
+    @Test
+    public void testPostRpcRequestWithLargeResponse() throws Exception {
+        String errorResponse = doPost("/api/v1/" + deviceCredentials.getCredentialsId() + "/rpc",
+                JacksonUtil.toString(createRpcRequestPayload(10001)),
+                String.class,
+                status().isPayloadTooLarge());
+        assertThat(errorResponse).contains("Payload size exceeds the limit");
+
+        doPost("/api/v1/" + deviceCredentials.getCredentialsId() + "/rpc",
+                JacksonUtil.toString(createRpcRequestPayload(10000)),
+                String.class,
+                status().isOk());
+    }
+
+    @Test
+    public void testPostLargeAttribute() throws Exception {
+        String errorResponse = doPost("/api/v1/" + deviceCredentials.getCredentialsId() + "/attributes",
+                JacksonUtil.toString(createJsonPayloadOfSize(20001)),
+                String.class,
+                status().isPayloadTooLarge());
+        assertThat(errorResponse).contains("Payload size exceeds the limit");
+
+        doPost("/api/v1/" + deviceCredentials.getCredentialsId() + "/attributes",
+                JacksonUtil.toString(createJsonPayloadOfSize(20000)),
+                String.class,
+                status().isOk());
+    }
+
+    private String createJsonPayloadOfSize(int size) {
+        String value = "a".repeat(size - 19);
+        return "{\"result\":\"" + value + "\"}";
+    }
+
+    private String createRpcRequestPayload(int size) {
+        String value = "a".repeat(size - 50);
+        return "{\"method\":\"get\",\"params\":{\"value\":\"" + value + "\"}}";
     }
 
     protected ResultActions doGetAsync(String urlTemplate, Object... urlVariables) throws Exception {

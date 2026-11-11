@@ -1,0 +1,30 @@
+<!--
+
+    SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+    SPDX-License-Identifier: Apache-2.0
+
+-->
+<section class="tb-widget-settings flex flex-col" [formGroup]="qrCodeWidgetSettingsForm">
+  <mat-slide-toggle class="mat-slide" formControlName="useQrCodeTextFunction">
+    {{ 'widgets.qr-code.use-qr-code-text-function' | translate }}
+  </mat-slide-toggle>
+  <mat-form-field [class.!hidden]="qrCodeWidgetSettingsForm.get('useQrCodeTextFunction').value" appearance="outline">
+    <mat-label translate>widgets.qr-code.qr-code-text-pattern</mat-label>
+    <input required matInput formControlName="qrCodeTextPattern">
+    <mat-hint>{{ 'widgets.qr-code.qr-code-text-pattern-hint' | translate }}</mat-hint>
+    @if (qrCodeWidgetSettingsForm.get('qrCodeTextPattern').hasError('required')) {
+      <mat-error>
+        {{ 'widgets.qr-code.qr-code-text-pattern-required' | translate }}
+      </mat-error>
+    }
+  </mat-form-field>
+  <tb-js-func required
+              [class.!hidden]="!qrCodeWidgetSettingsForm.get('useQrCodeTextFunction').value"
+              formControlName="qrCodeTextFunction"
+              withModules
+              [globalVariables]="functionScopeVariables"
+              [functionArgs]="['data']"
+              functionTitle="{{ 'widgets.qr-code.qr-code-text-function' | translate }}"
+              helpId="widget/lib/qrcode/qrcode_text_fn">
+  </tb-js-func>
+</section>

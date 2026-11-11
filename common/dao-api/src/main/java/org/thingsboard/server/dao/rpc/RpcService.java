@@ -1,0 +1,42 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+package org.thingsboard.server.dao.rpc;
+
+import com.google.common.util.concurrent.ListenableFuture;
+import org.thingsboard.server.common.data.id.DeviceId;
+import org.thingsboard.server.common.data.id.RpcId;
+import org.thingsboard.server.common.data.id.TenantId;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
+import org.thingsboard.server.common.data.rpc.Rpc;
+import org.thingsboard.server.common.data.rpc.RpcStatus;
+import org.thingsboard.server.dao.entity.EntityDaoService;
+
+public interface RpcService extends EntityDaoService {
+
+    /**
+     * Batched, non-blocking insert-if-absent. Persists the RPC only if no row with this id exists, so a
+     * re-delivered command is a no-op rather than an upsert that resurrects or clobbers the existing row. The
+     * row is written by the shared rpcId-striped batch queue, not by the calling thread.
+     *
+     * @return a future resolving to true if a row was inserted, false if a row with this id already existed
+     */
+    ListenableFuture<Boolean> createIfAbsentAsync(Rpc rpc);
+
+    ListenableFuture<Boolean> updateAsync(Rpc rpc);
+
+    void deleteRpc(TenantId tenantId, RpcId id);
+
+    void deleteAllRpcByTenantId(TenantId tenantId);
+
+    Rpc findById(TenantId tenantId, RpcId id);
+
+    ListenableFuture<Rpc> findRpcByIdAsync(TenantId tenantId, RpcId id);
+
+    PageData<Rpc> findAllByDeviceId(TenantId tenantId, DeviceId deviceId, PageLink pageLink);
+
+    PageData<Rpc> findAllByDeviceIdAndStatus(TenantId tenantId, DeviceId deviceId, RpcStatus rpcStatus, PageLink pageLink);
+
+    PageData<Rpc> findInFlightForReload(TenantId tenantId, DeviceId deviceId, PageLink pageLink);
+}

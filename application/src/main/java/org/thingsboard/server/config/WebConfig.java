@@ -1,29 +1,37 @@
-/**
- * Copyright © 2016-2017 The Thingsboard Authors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
 package org.thingsboard.server.config;
 
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-@Controller
-public class WebConfig {
+import java.util.concurrent.ThreadPoolExecutor;
 
-    @RequestMapping(value = "/{path:^(?!api$)(?!static$)(?!webjars$)[^\\.]*}/**")
-    public String redirect() {
-        return "forward:/index.html";
+@Configuration
+class WebConfig implements WebMvcConfigurer {
+
+    @Value("${server.mvc.async.core-pool-size:10}")
+    private int corePoolSize;
+    @Value("${server.mvc.async.max-pool-size:50}")
+    private int maxPoolSize;
+    @Value("${server.mvc.async.queue-capacity:10000}")
+    private int queueCapacity;
+
+    @Override
+    public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+        var executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(corePoolSize);
+        executor.setMaxPoolSize(maxPoolSize);
+        executor.setQueueCapacity(queueCapacity);
+        executor.setThreadNamePrefix("tb-mvc-async-");
+        executor.setAllowCoreThreadTimeOut(true);
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.initialize();
+        configurer.setTaskExecutor(executor);
     }
 
 }

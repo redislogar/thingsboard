@@ -1,0 +1,245 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+package org.thingsboard.server.controller;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.swagger.v3.oas.annotations.Hidden;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.RestController;
+import org.thingsboard.common.util.DebugModeUtil;
+import org.thingsboard.common.util.JacksonUtil;
+import org.thingsboard.server.common.data.DashboardInfo;
+import org.thingsboard.server.common.data.EntityType;
+import org.thingsboard.server.common.data.SystemParams;
+import org.thingsboard.server.common.data.SystemVersionInfo;
+import org.thingsboard.server.common.data.exception.ThingsboardException;
+import org.thingsboard.server.common.data.id.CustomerId;
+import org.thingsboard.server.common.data.id.TenantId;
+import org.thingsboard.server.common.data.mobile.qrCodeSettings.QRCodeConfig;
+import org.thingsboard.server.common.data.mobile.qrCodeSettings.QrCodeSettings;
+import org.thingsboard.server.common.data.page.PageData;
+import org.thingsboard.server.common.data.page.PageLink;
+import org.thingsboard.server.common.data.permission.MergedUserPermissions;
+import org.thingsboard.server.common.data.permission.Operation;
+import org.thingsboard.server.common.data.settings.UserSettings;
+import org.thingsboard.server.common.data.settings.UserSettingsType;
+import org.thingsboard.server.common.data.tenant.profile.DefaultTenantProfileConfiguration;
+import org.thingsboard.server.common.msg.edqs.EdqsService;
+import org.thingsboard.server.config.annotations.ApiOperation;
+import org.thingsboard.server.dao.mobile.QrCodeSettingService;
+import org.thingsboard.server.dao.subscription.PlatformFeature;
+import org.thingsboard.server.dao.subscription.SubscriptionService;
+import org.thingsboard.server.dao.trendz.TrendzSettingsService;
+import org.thingsboard.server.dao.wl.WhiteLabelingService;
+import org.thingsboard.server.queue.util.TbCoreComponent;
+import org.thingsboard.server.service.ai.TbAiService;
+import org.thingsboard.server.service.security.model.SecurityUser;
+import org.thingsboard.server.service.security.model.UserPrincipal;
+import org.thingsboard.server.service.sync.vc.EntitiesVersionControlService;
+import org.thingsboard.server.service.translation.TranslationService;
+import org.thingsboard.server.utils.DebugModeRateLimitsConfig;
+
+import java.util.Collections;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import static org.thingsboard.server.controller.ControllerConstants.SYSTEM_OR_TENANT_OR_CUSTOMER_AUTHORITY_PARAGRAPH;
+
+@RestController
+@TbCoreComponent
+@RequestMapping("/api")
+@Slf4j
+public class SystemInfoController extends BaseController {
+
+    @Value("${security.user_token_access_enabled}")
+    private boolean userTokenAccessEnabled;
+
+    @Value("${tbel.enabled:true}")
+    private boolean tbelEnabled;
+
+    @Value("${state.persistToTelemetry:false}")
+    private boolean persistToTelemetry;
+
+    @Value("${ui.dashboard.max_datapoints_limit}")
+    private long maxDatapointsLimit;
+
+    @Value("${debug.settings.default_duration:15}")
+    private int defaultDebugDurationMinutes;
+
+    @Value("${sql.query.key-filters-or-conditions.enabled:true}")
+    private boolean keyFiltersOrConditionsEnabled;
+
+    @Value("${sql.entity_data_query_nulls_order_strategy:default}")
+    private String nullsOrderStrategy;
+
+    @Value("${iot-hub.base-url:https://iot-hub.thingsboard.io}")
+    private String iotHubBaseUrl;
+
+    private static final Set<String> ACCEPTED_NULLS_ORDER_STRATEGIES = Set.of("default", "nulls_first", "nulls_last");
+
+    @Autowired(required = false)
+    private BuildProperties buildProperties;
+
+    @Autowired
+    private SubscriptionService subscriptionService;
+
+    @Autowired
+    private EntitiesVersionControlService versionControlService;
+
+    @Autowired
+    private WhiteLabelingService whiteLabelingService;
+
+    @Autowired
+    private TranslationService translationService;
+
+    @Autowired
+    private QrCodeSettingService qrCodeSettingService;
+
+    @Autowired
+    private DebugModeRateLimitsConfig debugModeRateLimitsConfig;
+
+    @Autowired
+    private TrendzSettingsService trendzSettingsService;
+
+    @Autowired
+    private TbAiService tbAiService;
+
+    @Autowired
+    private EdqsService edqsService;
+
+    @PostConstruct
+    public void init() {
+        log.info("System build info: {}", JacksonUtil.toString(buildInfoObject()));
+    }
+
+    @ApiOperation(value = "Get platform version (getSystemVersionInfo)",
+            notes = "Returns the version and edition of the platform build." + SYSTEM_OR_TENANT_OR_CUSTOMER_AUTHORITY_PARAGRAPH)
+    @PreAuthorize("hasAnyAuthority('SYS_ADMIN', 'TENANT_ADMIN', 'CUSTOMER_USER')")
+    @RequestMapping(value = "/system/info", method = RequestMethod.GET)
+    @ResponseBody
+    public SystemVersionInfo getSystemVersionInfo() {
+        return buildInfoObject();
+    }
+
+    @Hidden
+    @RequestMapping(value = "/noauth/system/development", method = RequestMethod.GET)
+    @ResponseBody
+    public Boolean isDevelopment() {
+        return subscriptionService.isDevelopment(TenantId.SYS_TENANT_ID);
+    }
+
+    @Hidden
+    @PreAuthorize("hasAnyAuthority('SYS_ADMIN', 'TENANT_ADMIN', 'CUSTOMER_USER')")
+    @RequestMapping(value = "/system/params", method = RequestMethod.GET)
+    @ResponseBody
+    public SystemParams getSystemParams() throws ThingsboardException {
+        SystemParams systemParams = new SystemParams();
+        SecurityUser currentUser = getCurrentUser();
+        TenantId tenantId = currentUser.getTenantId();
+        CustomerId customerId = currentUser.getCustomerId();
+        MergedUserPermissions mergedUserPermissions = currentUser.getUserPermissions();
+        systemParams.setUserTokenAccessEnabled(userTokenAccessEnabled);
+        boolean forceFullscreen = isForceFullscreen(currentUser);
+        if (forceFullscreen && (currentUser.isTenantAdmin() || currentUser.isCustomerUser())) {
+            PageLink pageLink = new PageLink(100);
+            PageData<DashboardInfo> dashboardsPageData = entityService.findUserEntities(tenantId, customerId, mergedUserPermissions, EntityType.DASHBOARD,
+                    Operation.READ, null, pageLink, false, true);
+            systemParams.setAllowedDashboardIds(dashboardsPageData.getData().stream().map(d -> d.getUuidId().toString()).collect(Collectors.toList()));
+        } else {
+            systemParams.setAllowedDashboardIds(Collections.emptyList());
+        }
+        systemParams.setEdgesSupportEnabled(edgesEnabled);
+        if (currentUser.isTenantAdmin()) {
+            systemParams.setHasRepository(versionControlService.getVersionControlSettings(tenantId) != null);
+            systemParams.setTbelEnabled(tbelEnabled);
+        } else {
+            systemParams.setHasRepository(false);
+            systemParams.setTbelEnabled(false);
+        }
+        if (currentUser.isTenantAdmin() || currentUser.isCustomerUser()) {
+            systemParams.setPersistDeviceStateToTelemetry(persistToTelemetry);
+            systemParams.setWhiteLabelingAllowed(whiteLabelingService.isWhiteLabelingAllowed(tenantId, customerId));
+            if (currentUser.isTenantAdmin()) {
+                systemParams.setCustomerWhiteLabelingAllowed(whiteLabelingService.isCustomerWhiteLabelingAllowed(tenantId));
+            } else {
+                systemParams.setCustomerWhiteLabelingAllowed(false);
+            }
+        } else {
+            systemParams.setPersistDeviceStateToTelemetry(false);
+            systemParams.setWhiteLabelingAllowed(false);
+            systemParams.setCustomerWhiteLabelingAllowed(false);
+        }
+        UserSettings userSettings = userSettingsService.findUserSettings(currentUser.getTenantId(), currentUser.getId(), UserSettingsType.GENERAL);
+        ObjectNode userSettingsNode = userSettings == null ? JacksonUtil.newObjectNode() : (ObjectNode) userSettings.getSettings();
+        if (!userSettingsNode.has("openedMenuSections")) {
+            userSettingsNode.set("openedMenuSections", JacksonUtil.newArrayNode());
+        }
+        systemParams.setUserSettings(userSettingsNode);
+        systemParams.setMaxDatapointsLimit(maxDatapointsLimit);
+        systemParams.setNullsOrderStrategy(ACCEPTED_NULLS_ORDER_STRATEGIES.contains(nullsOrderStrategy) ? nullsOrderStrategy : "default");
+        systemParams.setEdqsEnabled(edqsService.isApiEnabled());
+        if (!currentUser.isSystemAdmin()) {
+            DefaultTenantProfileConfiguration tenantProfileConfiguration = tenantProfileCache.get(tenantId).getDefaultProfileConfiguration();
+            systemParams.setMaxResourceSize(tenantProfileConfiguration.getMaxResourceSize());
+            systemParams.setMaxDebugModeDurationMinutes(DebugModeUtil.getMaxDebugAllDuration(tenantProfileConfiguration.getMaxDebugModeDurationMinutes(), defaultDebugDurationMinutes));
+            if (debugModeRateLimitsConfig.isRuleChainDebugPerTenantLimitsEnabled()) {
+                systemParams.setRuleChainDebugPerTenantLimitsConfiguration(debugModeRateLimitsConfig.getRuleChainDebugPerTenantLimitsConfiguration());
+            }
+            if (debugModeRateLimitsConfig.isCalculatedFieldDebugPerTenantLimitsEnabled()) {
+                systemParams.setCalculatedFieldDebugPerTenantLimitsConfiguration(debugModeRateLimitsConfig.getCalculatedFieldDebugPerTenantLimitsConfiguration());
+            }
+            if (debugModeRateLimitsConfig.isEventRateLimitsEnabled()) {
+                systemParams.setIntegrationDebugPerTenantLimitsConfiguration(debugModeRateLimitsConfig.getIntegrationDebugPerTenantLimitsConfiguration());
+                systemParams.setConverterDebugPerTenantLimitsConfiguration(debugModeRateLimitsConfig.getConverterDebugPerTenantLimitsConfiguration());
+            }
+            systemParams.setMaxArgumentsPerCF(tenantProfileConfiguration.getMaxArgumentsPerCF());
+            systemParams.setMaxDataPointsPerRollingArg(tenantProfileConfiguration.getMaxDataPointsPerRollingArg());
+            systemParams.setMinAllowedScheduledUpdateIntervalInSecForCF(tenantProfileConfiguration.getMinAllowedScheduledUpdateIntervalInSecForCF());
+            systemParams.setMaxRelationLevelPerCfArgument(tenantProfileConfiguration.getMaxRelationLevelPerCfArgument());
+            systemParams.setMaxRelatedEntitiesToReturnPerCfArgument(tenantProfileConfiguration.getMaxRelatedEntitiesToReturnPerCfArgument());
+            systemParams.setMinAllowedDeduplicationIntervalInSecForCF(tenantProfileConfiguration.getMinAllowedDeduplicationIntervalInSecForCF());
+            systemParams.setMinAllowedAggregationIntervalInSecForCF(tenantProfileConfiguration.getMinAllowedAggregationIntervalInSecForCF());
+            systemParams.setIntermediateAggregationIntervalInSecForCF(tenantProfileConfiguration.getIntermediateAggregationIntervalInSecForCF());
+        }
+        systemParams.setAvailableLocales(translationService.getAvailableLocaleCodes(tenantId, customerId));
+        systemParams.setIotHubBaseUrl(iotHubBaseUrl);
+        systemParams.setMobileQrEnabled(Optional.ofNullable(qrCodeSettingService.getMergedQrCodeSettings(tenantId))
+                .map(QrCodeSettings::getQrCodeConfig).map(QRCodeConfig::isShowOnHomePage)
+                .orElse(false));
+        systemParams.setAiEnabled(tbAiService.isEnabled());
+        systemParams.setAllowKeyFiltersOrConditions(keyFiltersOrConditionsEnabled);
+        systemParams.setLicenseVersion(subscriptionService.getLicenseVersion());
+        systemParams.setEdgeEnabled(subscriptionService.edgeEnabled(tenantId));
+        systemParams.setTrendzEnabled(subscriptionService.trendzEnabled(tenantId));
+        systemParams.setIntegrationsEnabled(subscriptionService.isFeatureEnabled(tenantId, PlatformFeature.INTEGRATIONS));
+        systemParams.setSchedulerEnabled(subscriptionService.isFeatureEnabled(tenantId, PlatformFeature.SCHEDULER));
+        systemParams.setReportingEnabled(subscriptionService.isFeatureEnabled(tenantId, PlatformFeature.REPORTING));
+        systemParams.setCommunityGrantLicense(subscriptionService.isCommunityGrantLicense());
+        return systemParams;
+    }
+
+    private boolean isForceFullscreen(SecurityUser currentUser) {
+        return UserPrincipal.Type.PUBLIC_ID.equals(currentUser.getUserPrincipal().getType()) ||
+                (currentUser.getAdditionalInfo() != null &&
+                        currentUser.getAdditionalInfo().has("defaultDashboardFullscreen") &&
+                        currentUser.getAdditionalInfo().get("defaultDashboardFullscreen").booleanValue());
+    }
+
+    private SystemVersionInfo buildInfoObject() {
+        if (buildProperties != null) {
+            return new SystemVersionInfo(buildProperties.getVersion(), buildProperties.getArtifact(), buildProperties.getName(), "PE");
+        }
+        return new SystemVersionInfo("unknown", null, null, "PE");
+    }
+
+}

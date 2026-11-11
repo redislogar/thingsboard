@@ -1,0 +1,58 @@
+// SPDX-FileCopyrightText: Copyright The ThingsBoard Authors
+// SPDX-FileCopyrightText: Modifications Copyright ThingsBoard, Inc.
+// SPDX-License-Identifier: Apache-2.0 AND BUSL-1.1
+import { Component, HostBinding, OnInit } from '@angular/core';
+import { AuthService } from '@core/auth/auth.service';
+import { Store } from '@ngrx/store';
+import { AppState } from '@core/core.state';
+import { PageComponent } from '@shared/components/page.component';
+import { UntypedFormBuilder, Validators } from '@angular/forms';
+import { ActionNotificationShow } from '@core/notification/notification.actions';
+import { TranslateService } from '@ngx-translate/core';
+import { WhiteLabelingService } from '@core/http/white-labeling.service';
+import { validateEmail } from '@app/core/utils';
+
+@Component({
+    selector: 'tb-reset-password-request',
+    templateUrl: './reset-password-request.component.html',
+    styleUrls: ['./password.component.scss'],
+    standalone: false
+})
+export class ResetPasswordRequestComponent extends PageComponent {
+
+  clicked: boolean = false;
+
+  requestPasswordRequest = this.fb.group({
+    email: ['', [Validators.required, validateEmail]],
+  }, {updateOn: 'submit'});
+
+  @HostBinding('class') class = 'tb-custom-css';
+
+  constructor(protected store: Store<AppState>,
+              private authService: AuthService,
+              private translate: TranslateService,
+              public wl: WhiteLabelingService,
+              public fb: UntypedFormBuilder) {
+      super(store);
+  }
+
+  disableInputs() {
+    this.requestPasswordRequest.disable();
+    this.clicked = true;
+  }
+
+  sendResetPasswordLink() {
+    if (this.requestPasswordRequest.valid) {
+      this.disableInputs();
+      this.authService.sendResetPasswordLink(this.requestPasswordRequest.get('email').value).subscribe(
+        () => {
+          this.store.dispatch(new ActionNotificationShow({
+            message: this.translate.instant('login.password-link-sent-message'),
+            type: 'success'
+          }));
+        }
+      );
+    }
+  }
+
+}
